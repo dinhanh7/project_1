@@ -25,7 +25,7 @@
 // --- CẤU HÌNH HIỆU NĂNG (PERFORMANCE METRICS) ---
 #define SYSTEM_FREQ_MHZ 100.0   // Tần số hoạt động: 100 MHz
 #define DRAM_BUS_WIDTH_BYTES 8  // Bus 64-bit (8 bytes/cycle)
-#define PE_COMPUTE_CYCLES 1     // Số cycle để PE array hoàn thành tính toán (Pipelined)
+#define PE_COMPUTE_CYCLES 1     // Số cycle để PE array hoàn thành tính toán 
 
 // Biến toàn cục để lưu thống kê
 unsigned long long total_dma_cycles = 0;
@@ -40,30 +40,25 @@ int32_t* ofm_dram;
 void dram_init() {
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C * sizeof(int8_t));
     // Load IFM
-    // Load IFM
     FILE* f_ifm = fopen("params/ifm.txt", "r");
     if(f_ifm) {
         char line[64];
         
-        // Sửa theo tinh thần Python: Dùng 3 vòng lặp lồng nhau H -> W -> C
         for (int h = 0; h < INPUT_H; h++) {
             for (int w = 0; w < INPUT_W; w++) {
                 for (int c = 0; c < INPUT_C; c++) {
                     
                     if (fgets(line, 64, f_ifm)) {
-                        // 1. Chuyển từ chuỗi sang số nguyên (tương đương int(x.strip()))
+                        // Chuyển từ chuỗi sang số nguyên 
                         int val = atoi(line);
-
-                        // 2. Xử lý số nguyên có dấu 8-bit (tương đương if val > 0x7F: val -= 0x100)
+                        // Xử lý số nguyên có dấu 8-bit 
                         if (val > 0x7F) {
                             val -= 0x100;
                         }
-
-                        // 3. Tính toán chỉ số mảng phẳng (tương đương reshaped_data[h, w, c])
                         // Công thức: index = h * (W * C) + w * C + c
+                        // [h, w, c]
                         int idx = h * (INPUT_W * INPUT_C) + w * INPUT_C + c;
-                        
-                        // Gán vào DRAM (ép kiểu về int8_t sau khi đã xử lý dấu)
+                        // Gán vào DRAM 
                         ifm_dram[idx] = (int8_t)val;
                     }
                 }

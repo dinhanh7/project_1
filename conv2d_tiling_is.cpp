@@ -40,15 +40,64 @@ int8_t buffer_weight[BUFFER_SIZE_BYTES];
 
 void dram_init() {
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C);
-    // Init dữ liệu giả lập (hoặc load file nếu cần)
-    for(int i=0; i<INPUT_H*INPUT_W*INPUT_C; i++) ifm_dram[i] = (i % 100);
-
+    // Load IFM
+    FILE* f_ifm = fopen("params/ifm.txt", "r");
+    if(f_ifm) {
+        char line[64];
+        
+        for (int h = 0; h < INPUT_H; h++) {
+            for (int w = 0; w < INPUT_W; w++) {
+                for (int c = 0; c < INPUT_C; c++) {
+                    
+                    if (fgets(line, 64, f_ifm)) {
+                        // Chuyển từ chuỗi sang số nguyên 
+                        int val = atoi(line);
+                        // Xử lý số nguyên có dấu 8-bit 
+                        if (val > 0x7F) {
+                            val -= 0x100;
+                        }
+                        // Công thức: index = h * (W * C) + w * C + c
+                        // [h, w, c]
+                        int idx = h * (INPUT_W * INPUT_C) + w * INPUT_C + c;
+                        // Gán vào DRAM 
+                        ifm_dram[idx] = (int8_t)val;
+                    }
+                }
+            }
+        }
+        fclose(f_ifm);
+    } else {
+        printf("Error: Could not open params/ifm.txt\n");
+        memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); 
+    }
+    // 2. Weights
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, 1);
-    for(int i=0; i<KERNEL_H*KERNEL_W*INPUT_C*OUTPUT_F; i++) weight_dram[i] = 1;
+    FILE* f_w = fopen("params/weights.txt", "r");
+    if(f_w) {
+        char line[64];
+        // WEITGHS = C->W->H->F
+        for(int f=0; f<OUTPUT_F; f++)
+            for(int h=0; h<KERNEL_H; h++)
+                for(int w=0; w<KERNEL_W; w++)
+                    for(int c=0; c<INPUT_C; c++)
+                        if(fgets(line, 64, f_w)) {
+                             int val = atoi(line);
+                             if (val > 0x7F) val -= 0x100;
+                             int idx = h*(KERNEL_W*INPUT_C*OUTPUT_F) + w*(INPUT_C*OUTPUT_F) + c*OUTPUT_F + f;
+                             weight_dram[idx] = (int8_t)val;
+                        }
+        fclose(f_w);
+    }
 
+    // 3. OFM (Dùng calloc để reset về 0 vì ta cần cộng dồn qua các pass)
     ofm_dram = (int32_t*)calloc(OUTPUT_H * OUTPUT_W * OUTPUT_F, sizeof(int32_t));
 }
-
+void write_dram_to_file() {
+    FILE* f = fopen("ofm/ofm.txt", "w");
+    if (!f) return;
+    for(int i=0; i<OUTPUT_H*OUTPUT_W; i++) fprintf(f, "%d\n", ofm_dram[i]);
+    fclose(f);
+}
 // ==================================================================================
 // 1. INPUT SLIDING WINDOW LOGIC
 // ==================================================================================
@@ -206,6 +255,7 @@ void cleanup() { free(ifm_dram); free(weight_dram); free(ofm_dram); }
 int main() {
     dram_init();
     run_simulation_hybrid();
+    write_dram_to_file();
     cleanup();
     return 0;
 }

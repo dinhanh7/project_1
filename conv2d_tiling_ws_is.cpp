@@ -40,12 +40,36 @@ int8_t buffer_weight[BUFFER_SIZE_BYTES];
 
 void dram_init() {
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C);
+    // Load IFM
     FILE* f_ifm = fopen("params/ifm.txt", "r");
     if(f_ifm) {
-        char line[64]; int idx = 0;
-        while(fgets(line, 64, f_ifm)) ifm_dram[idx++] = (int8_t)atoi(line);
+        char line[64];
+        
+        for (int h = 0; h < INPUT_H; h++) {
+            for (int w = 0; w < INPUT_W; w++) {
+                for (int c = 0; c < INPUT_C; c++) {
+                    
+                    if (fgets(line, 64, f_ifm)) {
+                        // Chuyển từ chuỗi sang số nguyên 
+                        int val = atoi(line);
+                        // Xử lý số nguyên có dấu 8-bit 
+                        if (val > 0x7F) {
+                            val -= 0x100;
+                        }
+                        // Công thức: index = h * (W * C) + w * C + c
+                        // [h, w, c]
+                        int idx = h * (INPUT_W * INPUT_C) + w * INPUT_C + c;
+                        // Gán vào DRAM 
+                        ifm_dram[idx] = (int8_t)val;
+                    }
+                }
+            }
+        }
         fclose(f_ifm);
-    } else { memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); }
+    } else {
+        printf("Error: Could not open params/ifm.txt\n");
+        memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); 
+    }
 
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, 1);
     FILE* f_w = fopen("params/weights.txt", "r");
