@@ -1,3 +1,4 @@
+// ./tlc 112 112 32 3 3 1 112 112 1 1 24 3 72
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
