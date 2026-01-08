@@ -67,9 +67,7 @@ void dram_init() {
     ofm_dram = (int32_t*)calloc(OUTPUT_H * OUTPUT_W * OUTPUT_F, sizeof(int32_t));
 }
 
-// ==================================================================================
-// 1. CÁC HÀM DMA (Weight, IFM Init, IFM Shift)
-// ==================================================================================
+// CÁC HÀM DMA (Weight, IFM Init, IFM Shift)
 
 // Load Weight (Weight Stationary - Chỉ chạy đầu Pass)
 void dma_load_weights(int pass_idx) {
@@ -121,7 +119,7 @@ void dma_load_ifm_init(int ho, int pass_idx) {
 void dma_shift_and_load_col(int ho, int wo, int pass_idx) {
     int channel_start = pass_idx * PARALLEL_CHANNELS;
     
-    // 1. SHIFT PHASE (Dịch chuyển dữ liệu trong SRAM/Register)
+    // SHIFT PHASE (Dịch chuyển dữ liệu trong SRAM/Register)
     // Cấu trúc buffer cho mỗi channel (3x3):
     // [0] [1] [2]  --> Cột 0: idx 0,3,6
     // [3] [4] [5]  --> Cột 1: idx 1,4,7
@@ -141,7 +139,7 @@ void dma_shift_and_load_col(int ho, int wo, int pass_idx) {
         buffer_ifm[base + 7] = buffer_ifm[base + 8]; 
     }
 
-    // 2. LOAD PHASE (Chỉ load cột thứ 3 từ DRAM)
+    // LOAD PHASE (Chỉ load cột thứ 3 từ DRAM)
     int bytes_loaded = 0;
     for (int i = 0; i < PARALLEL_CHANNELS; i++) {
         int current_c = channel_start + i;
@@ -170,9 +168,7 @@ void dma_shift_and_load_col(int ho, int wo, int pass_idx) {
     total_dma_cycles += (bytes_loaded + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
 }
 
-// ==================================================================================
-// 2. COMPUTE ENGINE
-// ==================================================================================
+// COMPUTE ENGINE
 
 int32_t run_pe_array() {
     int32_t partial_sum = 0;
@@ -188,9 +184,7 @@ int32_t run_pe_array() {
     return partial_sum;
 }
 
-// ==================================================================================
-// 3. CONTROLLER: WS + SLIDING WINDOW
-// ==================================================================================
+// CONTROLLER: WS + SLIDING WINDOW
 
 void run_accelerator_optimized() {
     printf("--- SIMULATION: WEIGHT STATIONARY + INPUT SLIDING WINDOW ---\n");

@@ -161,19 +161,19 @@ int main() {
     printf("Config: Input[%d,%d,%d], Kernel[%d,%d], Output[%d,%d,%d]\n", 
            INPUT_H, INPUT_W, INPUT_C, KERNEL_H, KERNEL_W, OUTPUT_H, OUTPUT_W, OUTPUT_F);
 
-    // 1. Đọc dữ liệu
+    // Đọc dữ liệu
     int8_t* ifm_data = read_ifm_file("params/ifm.txt");
     int16_t* weight_data = read_file_weight("params/weights.txt");
 
-    // 2. Tính toán
+    // Tính toán
     printf("Computing...\n");
     int32_t* ofm_data = conv2d(ifm_data, weight_data);
 
-    // 3. Ghi file
+    // Ghi file
     printf("Writing OFM...\n");
     write_ofm_file("ofm/ofm.txt", ofm_data);
 
-    // 4. Giải phóng
+    // Giải phóng
     free(ifm_data);
     free(weight_data);
     free(ofm_data);

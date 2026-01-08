@@ -32,7 +32,7 @@ unsigned long long total_dma_cycles = 0;
 unsigned long long total_compute_cycles = 0;
 unsigned long long total_cycles = 0;
 
-// 1. MÔ PHỎNG DRAM
+// MÔ PHỎNG DRAM
 int8_t* ifm_dram;       
 int8_t* weight_dram;    
 int32_t* ofm_dram;      
@@ -93,7 +93,7 @@ void dram_init() {
     ofm_dram = (int32_t*)malloc(OUTPUT_H * OUTPUT_W * OUTPUT_F * sizeof(int32_t));
 }
 
-// 2. MÔ PHỎNG BUFFER & DMA
+// MÔ PHỎNG BUFFER & DMA
 int8_t buffer_ifm[BUFFER_SIZE_BYTES];
 int8_t buffer_weight[BUFFER_SIZE_BYTES];
 
@@ -158,7 +158,7 @@ int dma_load_buffers(int ho, int wo, int pass_idx) {
     return cycles;
 }
 
-// 3. MÔ PHỎNG COMPUTE ENGINE
+// MÔ PHỎNG COMPUTE ENGINE
 int32_t run_pe_array(int* cycles_taken) {
     int32_t partial_sum = 0;
 
@@ -181,7 +181,7 @@ int32_t run_pe_array(int* cycles_taken) {
     return partial_sum;
 }
 
-// 4. CONTROLLER & REPORT
+// CONTROLLER & REPORT
 void run_accelerator() {
     printf("--- STARTING SIMULATION ---\n");
     printf("Specs:\n");
@@ -204,11 +204,11 @@ void run_accelerator() {
 
             for (int p = 0; p < num_passes; p++) {
                 
-                // 1. DMA Load
+                // DMA Load
                 int dma_c = dma_load_buffers(ho, wo, p);
                 total_dma_cycles += dma_c;
 
-                // 2. Compute
+                // Compute
                 int comp_c = 0;
                 int32_t pass_result = run_pe_array(&comp_c);//PE tinh toan xong gan vao pass_result
                 total_compute_cycles += comp_c;

@@ -1,3 +1,4 @@
+// ./isc 112 112 32 3 3 1 112 112 1 1 48 3 144
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -5,23 +6,28 @@
 #include <math.h>
 
 // --- CẤU HÌNH BÀI TOÁN ---
-#define INPUT_H 112
-#define INPUT_W 112
-#define INPUT_C 32
-#define KERNEL_H 3
-#define KERNEL_W 3
-#define OUTPUT_F 1 
-#define OUTPUT_H 112
-#define OUTPUT_W 112
-#define STRIDE 1
-#define PADDING 1
+// #define INPUT_H 112
+// #define INPUT_W 112
+// #define INPUT_C 32
+// #define KERNEL_H 3
+// #define KERNEL_W 3
+// #define OUTPUT_F 1 
+// #define OUTPUT_H 112
+// #define OUTPUT_W 112
+// #define STRIDE 1
+// #define PADDING 1
+int INPUT_H, INPUT_W, INPUT_C;
+int KERNEL_H, KERNEL_W;
+int OUTPUT_F, OUTPUT_H, OUTPUT_W;
+int STRIDE, PADDING;
 
 // --- CẤU HÌNH PHẦN CỨNG ---
-#define NUM_PE 48               
-#define MACS_PER_PE 3           
-#define BUFFER_SIZE_BYTES 144   // 144 bytes (Vừa đủ cho 16 channels x 9 phần tử)
-#define PARALLEL_CHANNELS 16    
-
+// #define NUM_PE 48               
+// #define MACS_PER_PE 3           
+// #define BUFFER_SIZE_BYTES 144   // 48 PE * 3 inputs * 1 byte
+// #define PARALLEL_CHANNELS 16    // Số channel xử lý song song
+int NUM_PE, MACS_PER_PE, BUFFER_SIZE_BYTES;
+int PARALLEL_CHANNELS;
 // --- CẤU HÌNH HIỆU NĂNG ---
 #define SYSTEM_FREQ_MHZ 100.0   
 #define DRAM_BUS_WIDTH_BYTES 8  
@@ -35,8 +41,9 @@ int8_t* ifm_dram;
 int8_t* weight_dram;    
 int32_t* ofm_dram;      
 
-int8_t buffer_ifm[BUFFER_SIZE_BYTES];   
-int8_t buffer_weight[BUFFER_SIZE_BYTES]; 
+int8_t* buffer_ifm;   
+int8_t* buffer_weight;
+
 
 void dram_init() {
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C);
@@ -246,10 +253,66 @@ void run_simulation_hybrid() {
 
 void cleanup() { free(ifm_dram); free(weight_dram); free(ofm_dram); }
 
-int main() {
+// int main() {
+//     dram_init();
+//     run_simulation_hybrid();
+//     write_dram_to_file();
+//     cleanup();
+//     return 0;
+// }
+int main(int argc, char *argv[]) {
+    // Kiểm tra đủ tham số (13 tham số + 1 tên file = 14)
+    if (argc < 14) {
+        printf("Usage: %s IH IW IC KH KW OF OH OW S P NPE MAC BUF\n", argv[0]);
+        return -1;
+    }
+
+    // Gán giá trị từ Terminal
+    INPUT_H = atoi(argv[1]);
+    INPUT_W = atoi(argv[2]);
+    INPUT_C = atoi(argv[3]);
+    KERNEL_H = atoi(argv[4]);
+    KERNEL_W = atoi(argv[5]);
+    OUTPUT_F = atoi(argv[6]);
+    OUTPUT_H = atoi(argv[7]);
+    OUTPUT_W = atoi(argv[8]);
+    STRIDE = atoi(argv[9]);
+    PADDING = atoi(argv[10]);
+    NUM_PE = atoi(argv[11]);
+    MACS_PER_PE = atoi(argv[12]);
+    BUFFER_SIZE_BYTES = atoi(argv[13]);
+
+    // Tự động tính PARALLEL_CHANNELS
+    // Logic: (Tổng số MACs của mảng PE) / (Kích thước 1 kernel)
+    // Ví dụ: (48 * 3) / (3 * 3) = 16
+    int kernel_size = KERNEL_H * KERNEL_W;
+    if (kernel_size > 0) {
+        PARALLEL_CHANNELS = (NUM_PE * MACS_PER_PE) / kernel_size;
+    } else {
+        PARALLEL_CHANNELS = 1;
+    }
+    printf("--- Configuration ---\n");
+    printf("Parallel Channels: %d\n", PARALLEL_CHANNELS);
+    printf("Buffer Size: %d bytes\n", BUFFER_SIZE_BYTES);
+
+    // Cấp phát bộ nhớ động cho Buffer
+    buffer_ifm = (int8_t*)malloc(BUFFER_SIZE_BYTES * sizeof(int8_t));
+    buffer_weight = (int8_t*)malloc(BUFFER_SIZE_BYTES * sizeof(int8_t));
+
+    if (!buffer_ifm || !buffer_weight) {
+        printf("Error: Malloc failed for buffers\n");
+        return -1;
+    }
+
+    // Chạy quy trình mô phỏng cũ
     dram_init();
-    run_simulation_hybrid();
+    run_simulation_hybrid(); // Hàm chạy chính của file này
     write_dram_to_file();
-    cleanup();
+    
+    // Dọn dẹp bộ nhớ
+    free(buffer_ifm);
+    free(buffer_weight);
+    cleanup(); // Dọn dẹp các DRAM
+
     return 0;
 }

@@ -4,22 +4,28 @@
 #include <string.h>
 
 // --- CẤU HÌNH BÀI TOÁN ---
-#define INPUT_H 112
-#define INPUT_W 112
-#define INPUT_C 32
-#define KERNEL_H 3
-#define KERNEL_W 3
-#define OUTPUT_F 1 
-#define OUTPUT_H 112
-#define OUTPUT_W 112
-#define STRIDE 1
-#define PADDING 1
+// #define INPUT_H 112
+// #define INPUT_W 112
+// #define INPUT_C 32
+// #define KERNEL_H 3
+// #define KERNEL_W 3
+// #define OUTPUT_F 1 
+// #define OUTPUT_H 112
+// #define OUTPUT_W 112
+// #define STRIDE 1
+// #define PADDING 1
+int INPUT_H, INPUT_W, INPUT_C;
+int KERNEL_H, KERNEL_W;
+int OUTPUT_F, OUTPUT_H, OUTPUT_W;
+int STRIDE, PADDING;
 
 // --- CẤU HÌNH PHẦN CỨNG ---
-#define NUM_PE 48               
-#define MACS_PER_PE 3           
-#define BUFFER_SIZE_BYTES 144   // 1152 bit = 144 bytes
-#define PARALLEL_CHANNELS 16    // 16 channels song song
+// #define NUM_PE 48               
+// #define MACS_PER_PE 3           
+// #define BUFFER_SIZE_BYTES 144   // 1152 bit = 144 bytes
+// #define PARALLEL_CHANNELS 16    // 16 channels song song
+int NUM_PE, MACS_PER_PE, BUFFER_SIZE_BYTES;
+int PARALLEL_CHANNELS;
 
 // --- CẤU HÌNH HIỆU NĂNG ---
 #define SYSTEM_FREQ_MHZ 100.0   
@@ -35,8 +41,10 @@ int8_t* ifm_dram;
 int8_t* weight_dram;    
 int32_t* ofm_dram;      
 
-int8_t buffer_ifm[BUFFER_SIZE_BYTES];   
-int8_t buffer_weight[BUFFER_SIZE_BYTES]; 
+// int8_t buffer_ifm[BUFFER_SIZE_BYTES];   
+// int8_t buffer_weight[BUFFER_SIZE_BYTES]; 
+int8_t* buffer_ifm;   
+int8_t* buffer_weight;
 
 void dram_init() {
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C);
@@ -91,9 +99,7 @@ void dram_init() {
     ofm_dram = (int32_t*)calloc(OUTPUT_H * OUTPUT_W * OUTPUT_F, sizeof(int32_t));
 }
 
-// ==================================================================================
-// 1. CÁC HÀM DMA (Weight, IFM Init, IFM Shift)
-// ==================================================================================
+// CÁC HÀM DMA (Weight, IFM Init, IFM Shift)
 
 // Load Weight (Weight Stationary - Chỉ chạy đầu Pass)
 void dma_load_weights(int pass_idx) {
@@ -142,41 +148,86 @@ void dma_load_ifm_init(int ho, int pass_idx) {
 
 // IFM SHIFT & LOAD: Dịch buffer và chỉ load cột mới
 // Tương ứng với việc chuyển sang "Khung màu Tím"
+// void dma_shift_and_load_col(int ho, int wo, int pass_idx) {
+//     int channel_start = pass_idx * PARALLEL_CHANNELS;
+    
+//     // SHIFT PHASE (Dịch chuyển dữ liệu trong SRAM/Register)
+//     // Cấu trúc buffer cho mỗi channel (3x3):
+//     // [0] [1] [2]  --> Cột 0: idx 0,3,6
+//     // [3] [4] [5]  --> Cột 1: idx 1,4,7
+//     // [6] [7] [8]  --> Cột 2: idx 2,5,8
+    
+//     for (int i = 0; i < PARALLEL_CHANNELS; i++) {
+//         int base = i * 9; 
+        
+//         // Cột 1 cũ -> Cột 0 mới
+//         buffer_ifm[base + 0] = buffer_ifm[base + 1]; 
+//         buffer_ifm[base + 3] = buffer_ifm[base + 4]; 
+//         buffer_ifm[base + 6] = buffer_ifm[base + 7]; 
+
+//         // Cột 2 cũ -> Cột 1 mới
+//         buffer_ifm[base + 1] = buffer_ifm[base + 2]; 
+//         buffer_ifm[base + 4] = buffer_ifm[base + 5]; 
+//         buffer_ifm[base + 7] = buffer_ifm[base + 8]; 
+//     }
+
+//     // LOAD PHASE (Chỉ load cột thứ 3 từ DRAM)
+//     int bytes_loaded = 0;
+//     for (int i = 0; i < PARALLEL_CHANNELS; i++) {
+//         int current_c = channel_start + i;
+//         if (current_c >= INPUT_C) break;
+//         int base = i * 9;
+
+//         // Tính tọa độ cột mới bên phải cùng của cửa sổ 3x3
+//         // Cột mới là index 2 trong kernel window (0, 1, [2])
+//         int wi = wo * STRIDE + 2 - PADDING;
+
+//         for (int kh = 0; kh < KERNEL_H; kh++) { // 3 dòng của cột mới
+//             int hi = ho * STRIDE + kh - PADDING;
+            
+//             int8_t val = 0;
+//             if (hi >= 0 && hi < INPUT_H && wi >= 0 && wi < INPUT_W) {
+//                 val = ifm_dram[hi * (INPUT_W * INPUT_C) + wi * INPUT_C + current_c];
+//             }
+            
+//             // Ghi vào vị trí cột 2 (Index 2, 5, 8)
+//             buffer_ifm[base + (kh * 3) + 2] = val;
+//             bytes_loaded++;
+//         }
+//     }
+
+//     // Latency: Chỉ load 48 bytes (3 bytes * 16 channels) -> NHANH GẤP 3 LẦN
+//     total_dma_cycles += (bytes_loaded + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
+// }
 void dma_shift_and_load_col(int ho, int wo, int pass_idx) {
     int channel_start = pass_idx * PARALLEL_CHANNELS;
-    
-    // 1. SHIFT PHASE (Dịch chuyển dữ liệu trong SRAM/Register)
-    // Cấu trúc buffer cho mỗi channel (3x3):
-    // [0] [1] [2]  --> Cột 0: idx 0,3,6
-    // [3] [4] [5]  --> Cột 1: idx 1,4,7
-    // [6] [7] [8]  --> Cột 2: idx 2,5,8
-    
-    for (int i = 0; i < PARALLEL_CHANNELS; i++) {
-        int base = i * 9; 
-        
-        // Cột 1 cũ -> Cột 0 mới
-        buffer_ifm[base + 0] = buffer_ifm[base + 1]; 
-        buffer_ifm[base + 3] = buffer_ifm[base + 4]; 
-        buffer_ifm[base + 6] = buffer_ifm[base + 7]; 
+    int kernel_size = KERNEL_H * KERNEL_W;
 
-        // Cột 2 cũ -> Cột 1 mới
-        buffer_ifm[base + 1] = buffer_ifm[base + 2]; 
-        buffer_ifm[base + 4] = buffer_ifm[base + 5]; 
-        buffer_ifm[base + 7] = buffer_ifm[base + 8]; 
+    // SHIFT PHASE: Dịch chuyển dữ liệu sang trái
+    for (int i = 0; i < PARALLEL_CHANNELS; i++) {
+        int base = i * kernel_size; 
+        
+        for (int kh = 0; kh < KERNEL_H; kh++) {
+            // Duyệt đến cột kế cuối (KERNEL_W - 2)
+            for (int kw = 0; kw < KERNEL_W - 1; kw++) {
+                int dest = base + (kh * KERNEL_W) + kw;       // Vị trí nhận
+                int src  = base + (kh * KERNEL_W) + (kw + 1); // Vị trí nguồn (bên phải nó)
+                buffer_ifm[dest] = buffer_ifm[src];
+            }
+        }
     }
 
-    // 2. LOAD PHASE (Chỉ load cột thứ 3 từ DRAM)
+    // LOAD PHASE: Chỉ load cột mới nhất bên phải (cột cuối cùng của kernel)
     int bytes_loaded = 0;
     for (int i = 0; i < PARALLEL_CHANNELS; i++) {
         int current_c = channel_start + i;
         if (current_c >= INPUT_C) break;
-        int base = i * 9;
+        int base = i * kernel_size;
 
-        // Tính tọa độ cột mới bên phải cùng của cửa sổ 3x3
-        // Cột mới là index 2 trong kernel window (0, 1, [2])
-        int wi = wo * STRIDE + 2 - PADDING;
+        // Tính cột mới: Lấy rìa phải của window (KERNEL_W - 1)
+        int wi = wo * STRIDE + (KERNEL_W - 1) - PADDING;
 
-        for (int kh = 0; kh < KERNEL_H; kh++) { // 3 dòng của cột mới
+        for (int kh = 0; kh < KERNEL_H; kh++) { 
             int hi = ho * STRIDE + kh - PADDING;
             
             int8_t val = 0;
@@ -184,19 +235,18 @@ void dma_shift_and_load_col(int ho, int wo, int pass_idx) {
                 val = ifm_dram[hi * (INPUT_W * INPUT_C) + wi * INPUT_C + current_c];
             }
             
-            // Ghi vào vị trí cột 2 (Index 2, 5, 8)
-            buffer_ifm[base + (kh * 3) + 2] = val;
+            // Ghi vào cột cuối cùng của hàng hiện tại
+            int idx = base + (kh * KERNEL_W) + (KERNEL_W - 1);
+            buffer_ifm[idx] = val;
             bytes_loaded++;
         }
     }
 
-    // Latency: Chỉ load 48 bytes (3 bytes * 16 channels) -> NHANH GẤP 3 LẦN
+    // Latency
     total_dma_cycles += (bytes_loaded + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
 }
 
-// ==================================================================================
-// 2. COMPUTE ENGINE
-// ==================================================================================
+// COMPUTE ENGINE
 
 int32_t run_pe_array() {
     int32_t partial_sum = 0;
@@ -212,9 +262,7 @@ int32_t run_pe_array() {
     return partial_sum;
 }
 
-// ==================================================================================
-// 3. CONTROLLER: WS + SLIDING WINDOW
-// ==================================================================================
+// CONTROLLER: WS + SLIDING WINDOW
 
 void run_accelerator_optimized() {
     printf("--- SIMULATION: WEIGHT STATIONARY + INPUT SLIDING WINDOW ---\n");
@@ -270,10 +318,66 @@ void write_dram_to_file() {
 
 void cleanup() { free(ifm_dram); free(weight_dram); free(ofm_dram); }
 
-int main() {
+// int main() {
+//     dram_init();
+//     run_accelerator_optimized();
+//     write_dram_to_file();
+//     cleanup();
+//     return 0;
+// }
+int main(int argc, char *argv[]) {
+    // Kiểm tra tham số (13 số + 1 tên file = 14)
+    if (argc < 14) {
+        printf("Usage: %s IH IW IC KH KW OF OH OW S P NPE MAC BUF\n", argv[0]);
+        return -1;
+    }
+
+    // Gán giá trị
+    INPUT_H = atoi(argv[1]);
+    INPUT_W = atoi(argv[2]);
+    INPUT_C = atoi(argv[3]);
+    KERNEL_H = atoi(argv[4]);
+    KERNEL_W = atoi(argv[5]);
+    OUTPUT_F = atoi(argv[6]);
+    OUTPUT_H = atoi(argv[7]);
+    OUTPUT_W = atoi(argv[8]);
+    STRIDE = atoi(argv[9]);
+    PADDING = atoi(argv[10]);
+    NUM_PE = atoi(argv[11]);
+    MACS_PER_PE = atoi(argv[12]);
+    BUFFER_SIZE_BYTES = atoi(argv[13]);
+
+    // Tự động tính PARALLEL_CHANNELS
+    // Logic: Tổng resource / kích thước 1 kernel
+    int kernel_size = KERNEL_H * KERNEL_W;
+    if (kernel_size > 0) {
+        PARALLEL_CHANNELS = (NUM_PE * MACS_PER_PE) / kernel_size;
+    } else {
+        PARALLEL_CHANNELS = 1;
+    }
+
+    printf("--- Configuration ---\n");
+    printf("Auto-calculated PARALLEL_CHANNELS: %d\n", PARALLEL_CHANNELS);
+    printf("Buffer Size: %d bytes\n", BUFFER_SIZE_BYTES);
+
+    // Cấp phát bộ nhớ động
+    buffer_ifm = (int8_t*)malloc(BUFFER_SIZE_BYTES * sizeof(int8_t));
+    buffer_weight = (int8_t*)malloc(BUFFER_SIZE_BYTES * sizeof(int8_t));
+
+    if (!buffer_ifm || !buffer_weight) {
+        printf("Error: Malloc failed\n");
+        return -1;
+    }
+
+    // Chạy mô phỏng
     dram_init();
     run_accelerator_optimized();
     write_dram_to_file();
+    
+    // Dọn dẹp
+    free(buffer_ifm);
+    free(buffer_weight);
     cleanup();
+
     return 0;
 }

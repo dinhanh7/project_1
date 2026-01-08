@@ -51,17 +51,17 @@ def read_bias_file(filename, length):
     with open(filename, "r") as file:
         # hex_values = file.readlines()
         lines = file.readlines()    
-    # 1. Đọc dữ liệu Hex (Python tự hiểu 0xFF...F là số dương lớn)
+    # Đọc dữ liệu Hex (Python tự hiểu 0xFF...F là số dương lớn)
     # Chúng ta dùng int(x, 16) sẽ ra số dương unsigned nếu x >= 0x80000000
     # data = np.array([int(x.strip(), 16) for x in hex_values], dtype=np.int64)
     data = np.array([int(x.strip()) for x in lines], dtype=np.int64)
-    # 2. Xử lý số âm (Signed 32-bit conversion)
+    # Xử lý số âm (Signed 32-bit conversion)
     # Nếu giá trị >= 2^31 (0x80000000), tức là số âm trong hệ bù 2 32-bit
     for i in range(len(data)):
         if data[i] >= 0x80000000: 
             data[i] -= 0x100000000  # Trừ đi 2^32 để về số âm
 
-    # 3. Ép kiểu về đúng int32 để đưa vào Model
+    # Ép kiểu về đúng int32 để đưa vào Model
     data = data.astype(np.int32)
 
     # LƯU Ý QUAN TRỌNG: 
@@ -159,7 +159,7 @@ if __name__ == "__main__":
     input_data = read_hex_file(input_file, (args.ifm_height, args.ifm_width, args.ifm_channel))
     weight_data_flat = read_hex_file_weight(weight_file, (3, 3, args.ifm_channel, args.weight_filter))
     weight_data = weight_data_flat.reshape(3, 3, args.ifm_channel, args.weight_filter)
-    # 2. Tính toán và thực hiện Padding thủ công
+    # Tính toán và thực hiện Padding thủ công
     if args.padding1 > 0:
         # Tính toán lượng cần pad theo chuẩn TensorFlow 'SAME'
         pad_h_total = max((output_feature_height - 1) * args.stride1 + 3 - args.ifm_height, 0)
@@ -185,7 +185,7 @@ if __name__ == "__main__":
     # Cập nhật shape mới sau khi pad
     padded_height, padded_width, _ = input_data_padded.shape
 
-    # 3. Tạo mô hình với padding='valid' (vì đã pad tay rồi)
+    # Tạo mô hình với padding='valid' (vì đã pad tay rồi)
     input_layer = tf.keras.layers.Input(shape=(padded_height, padded_width, args.ifm_channel))
     conv_layer = tf.keras.layers.Conv2D(filters=args.weight_filter,
                                         kernel_size=(3, 3),
@@ -196,7 +196,7 @@ if __name__ == "__main__":
     
     model = tf.keras.Model(inputs=input_layer, outputs=conv_layer)
     model.layers[1].set_weights([weight_data.astype(np.float32)]) # <--- Bỏ bias_data đi
-    # 4. Dự đoán với input đã pad
+    # Dự đoán với input đã pad
     output_data = model.predict(input_data_padded.reshape(1, padded_height, padded_width, args.ifm_channel).astype(np.float32))
     output_data = output_data.reshape(output_feature_height, output_feature_width, output_feature_channel)
     write_hex_file(output_file, output_data)

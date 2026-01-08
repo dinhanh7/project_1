@@ -36,9 +36,7 @@ unsigned long long total_dma_cycles = 0;     // Tổng số cycle tiêu tốn ch
 unsigned long long total_compute_cycles = 0; // Tổng số cycle tiêu tốn cho việc tính toán (Compute)
 unsigned long long total_cycles = 0;         // Tổng thời gian toàn hệ thống
 
-// ==================================================================================
-// 1. MÔ PHỎNG DRAM (BỘ NHỚ NGOÀI)
-// ==================================================================================
+// MÔ PHỎNG DRAM (BỘ NHỚ NGOÀI)
 // Các con trỏ này đại diện cho bộ nhớ RAM vật lý chứa dữ liệu
 int8_t* ifm_dram;       // Chứa dữ liệu đầu vào (Input Feature Map)
 int8_t* weight_dram;    // Chứa trọng số (Weights/Kernels)
@@ -88,9 +86,7 @@ void dram_init() {
     ofm_dram = (int32_t*)malloc(OUTPUT_H * OUTPUT_W * OUTPUT_F * sizeof(int32_t));
 }
 
-// ==================================================================================
-// 2. MÔ PHỎNG BUFFER & DMA (BỘ NHỚ ĐỆM & TRUYỀN DỮ LIỆU)
-// ==================================================================================
+// MÔ PHỎNG BUFFER & DMA (BỘ NHỚ ĐỆM & TRUYỀN DỮ LIỆU)
 // Đây là bộ nhớ SRAM bên trong chip (On-chip memory), tốc độ rất nhanh nhưng dung lượng nhỏ
 int8_t buffer_ifm[BUFFER_SIZE_BYTES];
 int8_t buffer_weight[BUFFER_SIZE_BYTES];
@@ -117,7 +113,7 @@ int dma_load_buffers(int ho, int wo, int pass_idx) {
         // Quét qua cửa sổ kernel (3x3)
         for (int kh = 0; kh < KERNEL_H; kh++) {
             for (int kw = 0; kw < KERNEL_W; kw++) {
-                // --- 1. Tính toán địa chỉ IFM ---
+                // --- Tính toán địa chỉ IFM ---
                 // Từ tọa độ output (ho, wo) suy ngược ra tọa độ input (hi, wi)
                 // Công thức: Input = Output * Stride + Kernel_Offset - Padding
                 int hi = ho * STRIDE + kh - PADDING;
@@ -130,13 +126,13 @@ int dma_load_buffers(int ho, int wo, int pass_idx) {
                     val_ifm = ifm_dram[dram_idx]; // Đọc từ DRAM
                 }
 
-                // --- 2. Tính toán địa chỉ Weight ---
+                // --- Tính toán địa chỉ Weight ---
                 int w_dram_idx = kh * (KERNEL_W * INPUT_C * OUTPUT_F) + 
                                  kw * (INPUT_C * OUTPUT_F) + 
                                  current_c * OUTPUT_F + 0; // Giả sử output channel 0
                 int8_t val_w = weight_dram[w_dram_idx]; // Đọc từ DRAM
 
-                // --- 3. Ghi vào Buffer ---
+                // --- Ghi vào Buffer ---
                 buffer_ifm[buffer_ptr] = val_ifm;
                 buffer_weight[buffer_ptr] = val_w;
                 buffer_ptr++;
@@ -159,9 +155,7 @@ int dma_load_buffers(int ho, int wo, int pass_idx) {
     return cycles;
 }
 
-// ==================================================================================
-// 3. MÔ PHỎNG COMPUTE ENGINE (KHỐI TÍNH TOÁN)
-// ==================================================================================
+// MÔ PHỎNG COMPUTE ENGINE (KHỐI TÍNH TOÁN)
 // Hàm này mô phỏng mảng PE thực hiện phép nhân chập trên dữ liệu đã có trong Buffer
 // Output: Kết quả tính toán (Partial Sum) và trả về số cycle tiêu tốn qua con trỏ cycles_taken
 int32_t run_pe_array(int* cycles_taken) {
@@ -190,9 +184,7 @@ int32_t run_pe_array(int* cycles_taken) {
     return partial_sum;
 }
 
-// ==================================================================================
-// 4. CONTROLLER & REPORT (BỘ ĐIỀU KHIỂN & BÁO CÁO)
-// ==================================================================================
+// CONTROLLER & REPORT (BỘ ĐIỀU KHIỂN & BÁO CÁO)
 // Hàm chính điều phối toàn bộ hoạt động của Accelerator
 void run_accelerator() {
     printf("--- STARTING SIMULATION ---\n");
@@ -273,9 +265,9 @@ void cleanup() {
 }
 
 int main() {
-    dram_init();        // 1. Khởi tạo bộ nhớ
-    run_accelerator();  // 2. Chạy mô phỏng phần cứng
-    write_dram_to_file(); // 3. Xuất kết quả
-    cleanup();          // 4. Dọn dẹp
+    dram_init();        // Khởi tạo bộ nhớ
+    run_accelerator();  // Chạy mô phỏng phần cứng
+    write_dram_to_file(); // Xuất kết quả
+    cleanup();          // Dọn dẹp
     return 0;
 }

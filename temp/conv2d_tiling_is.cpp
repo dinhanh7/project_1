@@ -62,9 +62,7 @@ void dram_init() {
     ofm_dram = (int32_t*)calloc(OUTPUT_H * OUTPUT_W * OUTPUT_F, sizeof(int32_t));
 }
 
-// ==================================================================================
-// 1. INPUT SLIDING WINDOW LOGIC (LOGIC CỬA SỔ TRƯỢT CHO INPUT)
-// ==================================================================================
+// INPUT SLIDING WINDOW LOGIC (LOGIC CỬA SỔ TRƯỢT CHO INPUT)
 
 // [INIT] Load toàn bộ 3x3 block (Chỉ chạy tại cột đầu tiên wo=0)
 // Hàm này tải dữ liệu "lạnh" từ DRAM vào Buffer khi bắt đầu một hàng mới.
@@ -103,7 +101,7 @@ void dma_load_ifm_full(int ho, int pass_idx) {
 void dma_shift_and_load_ifm(int ho, int wo, int pass_idx) {
     int channel_start = pass_idx * PARALLEL_CHANNELS;
     
-    // 1. SHIFT BUFFER (Mô phỏng dịch chuyển thanh ghi phần cứng)
+    // SHIFT BUFFER (Mô phỏng dịch chuyển thanh ghi phần cứng)
     // Dữ liệu trong buffer được dời sang trái: Cột 1 -> Cột 0, Cột 2 -> Cột 1.
     for (int i = 0; i < PARALLEL_CHANNELS; i++) {
         int base = i * 9; // Mỗi kênh chiếm 9 vị trí trong buffer
@@ -117,7 +115,7 @@ void dma_shift_and_load_ifm(int ho, int wo, int pass_idx) {
         buffer_ifm[base + 7] = buffer_ifm[base + 8]; 
     }
 
-    // 2. LOAD NEW COLUMN (Chỉ tải cột thứ 3 mới nhất từ DRAM)
+    // LOAD NEW COLUMN (Chỉ tải cột thứ 3 mới nhất từ DRAM)
     int bytes_loaded = 0;
     for (int i = 0; i < PARALLEL_CHANNELS; i++) {
         int current_c = channel_start + i;
@@ -141,9 +139,7 @@ void dma_shift_and_load_ifm(int ho, int wo, int pass_idx) {
     total_dma_cycles += (bytes_loaded + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
 }
 
-// ==================================================================================
-// 2. WEIGHT LOADING (Mô phỏng Tiling: Load lại liên tục)
-// ==================================================================================
+// WEIGHT LOADING (Mô phỏng Tiling: Load lại liên tục)
 
 // Hàm này sẽ được gọi TẠI MỖI PIXEL (WO) - Rất tốn kém băng thông
 // Trong mô hình này, Weights KHÔNG được tái sử dụng (No Weight Reuse) theo chiều ngang (Output Stationary).
@@ -168,9 +164,7 @@ void dma_load_weights_per_pixel(int pass_idx) {
     total_dma_cycles += (buffer_ptr + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
 }
 
-// ==================================================================================
-// 3. COMPUTE ENGINE & CONTROLLER (BỘ TÍNH TOÁN VÀ ĐIỀU KHIỂN)
-// ==================================================================================
+// COMPUTE ENGINE & CONTROLLER (BỘ TÍNH TOÁN VÀ ĐIỀU KHIỂN)
 
 // Mô phỏng mảng PE thực hiện phép nhân chập (Dot Product)
 int32_t run_pe_array() {
@@ -206,12 +200,12 @@ void run_simulation_hybrid() {
             // Vòng lặp theo chiều rộng Output
             for (int wo = 0; wo < OUTPUT_W; wo++) {
                 
-                // 1. WEIGHT LOADING (Kém hiệu quả - Theo yêu cầu bài toán)
+                // WEIGHT LOADING (Kém hiệu quả - Theo yêu cầu bài toán)
                 // Được gọi bên trong vòng lặp WO -> Load lại 112 lần mỗi hàng!
                 // Đây là đặc điểm của chiến lược "Input Sliding Window" thuần túy mà không tối ưu Weight.
                 dma_load_weights_per_pixel(p);
 
-                // 2. IFM LOADING (Hiệu quả - Sliding Window)
+                // IFM LOADING (Hiệu quả - Sliding Window)
                 if (wo == 0) {
                     // Đầu hàng: Load đầy đủ
                     dma_load_ifm_full(ho, p); 
@@ -220,7 +214,7 @@ void run_simulation_hybrid() {
                     dma_shift_and_load_ifm(ho, wo, p); 
                 }
 
-                // 3. COMPUTE
+                // COMPUTE
                 // Thực hiện tính toán trên dữ liệu đã có trong buffer
                 int32_t res = run_pe_array();
                 

@@ -26,9 +26,7 @@
 // Input Channel xử lý song song = 48 PE / (9 weights / 3 MACs) = 16 Channels
 #define PARALLEL_CHANNELS 16    
 
-// ==================================================================================
-// 1. MÔ PHỎNG DRAM (Data nằm trong bộ nhớ lớn)
-// ==================================================================================
+// MÔ PHỎNG DRAM (Data nằm trong bộ nhớ lớn)
 
 int8_t* ifm_dram;       // DRAM chứa Input Feature Map
 int8_t* weight_dram;    // DRAM chứa Weights (Lưu ý: Bạn yêu cầu Weight là int8)
@@ -36,7 +34,7 @@ int32_t* ofm_dram;      // DRAM chứa Output Feature Map (Kết quả)
 
 // Hàm khởi tạo và đọc dữ liệu vào DRAM (Giả lập việc load model)
 void dram_init() {
-    // 1. Cấp phát DRAM cho IFM
+    // Cấp phát DRAM cho IFM
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C * sizeof(int8_t));
     FILE* f_ifm = fopen("params/ifm.txt", "r");
     if(f_ifm) {
@@ -46,7 +44,7 @@ void dram_init() {
         fclose(f_ifm);
     } else { printf("Error loading IFM to DRAM\n"); exit(1); }
 
-    // 2. Cấp phát DRAM cho Weights (INT8)
+    // Cấp phát DRAM cho Weights (INT8)
     // Lưu ý: File weight gốc có thể là int16 hoặc int8, ở đây ta giả lập ép về int8 theo yêu cầu HW
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, sizeof(int8_t));
     FILE* f_w = fopen("params/weights.txt", "r");
@@ -71,13 +69,11 @@ void dram_init() {
         fclose(f_w);
     }
     
-    // 3. Cấp phát DRAM cho OFM
+    // Cấp phát DRAM cho OFM
     ofm_dram = (int32_t*)malloc(OUTPUT_H * OUTPUT_W * OUTPUT_F * sizeof(int32_t));
 }
 
-// ==================================================================================
-// 2. MÔ PHỎNG ON-CHIP BUFFER (SRAM 1152 bit)
-// ==================================================================================
+// MÔ PHỎNG ON-CHIP BUFFER (SRAM 1152 bit)
 
 // Buffer phần cứng: 144 bytes
 int8_t buffer_ifm[BUFFER_SIZE_BYTES];
@@ -103,7 +99,7 @@ void dma_load_buffers(int ho, int wo, int pass_idx) {
         for (int kh = 0; kh < KERNEL_H; kh++) {
             for (int kw = 0; kw < KERNEL_W; kw++) {
                 
-                // 1. Fetch IFM từ DRAM (Xử lý Padding tại đây)
+                // Fetch IFM từ DRAM (Xử lý Padding tại đây)
                 int hi = ho * STRIDE + kh - PADDING;
                 int wi = wo * STRIDE + kw - PADDING;
                 
@@ -113,7 +109,7 @@ void dma_load_buffers(int ho, int wo, int pass_idx) {
                     val_ifm = ifm_dram[dram_idx];
                 }
 
-                // 2. Fetch Weight từ DRAM
+                // Fetch Weight từ DRAM
                 // Layout H-W-C-F
                 int w_dram_idx = kh * (KERNEL_W * INPUT_C * OUTPUT_F) + 
                                  kw * (INPUT_C * OUTPUT_F) + 
@@ -121,7 +117,7 @@ void dma_load_buffers(int ho, int wo, int pass_idx) {
                                  0; // Filter 0
                 int8_t val_w = weight_dram[w_dram_idx];
 
-                // 3. Ghi vào Buffer
+                // Ghi vào Buffer
                 buffer_ifm[buffer_ptr] = val_ifm;
                 buffer_weight[buffer_ptr] = val_w;
                 buffer_ptr++;
@@ -131,9 +127,7 @@ void dma_load_buffers(int ho, int wo, int pass_idx) {
     // Kết thúc hàm này, buffer đã đầy 144 bytes dữ liệu
 }
 
-// ==================================================================================
-// 3. MÔ PHỎNG COMPUTE ENGINE (48 PEs)
-// ==================================================================================
+// MÔ PHỎNG COMPUTE ENGINE (48 PEs)
 
 // Mỗi PE thực hiện 3 MACs.
 // Logic:
@@ -170,9 +164,7 @@ int32_t run_pe_array() {
     return partial_sum_cycle;
 }
 
-// ==================================================================================
-// 4. HỆ THỐNG ĐIỀU KHIỂN CHÍNH (CONTROLLER)
-// ==================================================================================
+// HỆ THỐNG ĐIỀU KHIỂN CHÍNH (CONTROLLER)
 
 void run_accelerator() {
     printf("Starting HW Simulation...\n");
@@ -190,17 +182,17 @@ void run_accelerator() {
             // Loop các Pass (Time Multiplexing)
             for (int p = 0; p < num_passes; p++) {
                 
-                // 1. Controller ra lệnh DMA load dữ liệu vào SRAM
+                // Controller ra lệnh DMA load dữ liệu vào SRAM
                 dma_load_buffers(ho, wo, p);
 
-                // 2. Controller kích hoạt PE Array chạy
+                // Controller kích hoạt PE Array chạy
                 int32_t pass_result = run_pe_array();
 
-                // 3. Cộng dồn kết quả từng pass
+                // Cộng dồn kết quả từng pass
                 final_accumulator += pass_result;
             }
 
-            // 4. Write Back to DRAM (Store OFM)
+            // Write Back to DRAM (Store OFM)
             int out_idx = ho * OUTPUT_W + wo; // Filter=0
             ofm_dram[out_idx] = final_accumulator;
         }
@@ -225,16 +217,16 @@ void cleanup() {
 }
 
 int main() {
-    // 1. Khởi tạo hệ thống (Load DRAM)
+    // Khởi tạo hệ thống (Load DRAM)
     dram_init();
 
-    // 2. Chạy mô phỏng
+    // Chạy mô phỏng
     run_accelerator();
 
-    // 3. Xuất kết quả
+    // Xuất kết quả
     write_dram_to_file();
 
-    // 4. Kết thúc
+    // Kết thúc
     cleanup();
     return 0;
 }

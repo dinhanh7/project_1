@@ -42,9 +42,7 @@
 unsigned long long total_dma_cycles = 0;
 unsigned long long total_compute_cycles = 0;
 
-// ==================================================================================
-// 1. MÔ PHỎNG BỘ NHỚ (DRAM & BUFFERS)
-// ==================================================================================
+// MÔ PHỎNG BỘ NHỚ (DRAM & BUFFERS)
 
 // Con trỏ mô phỏng bộ nhớ ngoài (DRAM) chứa dữ liệu toàn cục
 int8_t* ifm_dram;       
@@ -59,7 +57,7 @@ int8_t buffer_weight[BUFFER_SIZE_BYTES];
 
 // Hàm khởi tạo DRAM: Cấp phát bộ nhớ và đọc dữ liệu từ file (hoặc tạo giả)
 void dram_init() {
-    // 1. IFM: Cấp phát và đọc file params/ifm.txt
+    // IFM: Cấp phát và đọc file params/ifm.txt
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C);
     FILE* f_ifm = fopen("params/ifm.txt", "r");
     if(f_ifm) {
@@ -68,7 +66,7 @@ void dram_init() {
         fclose(f_ifm);
     } else { memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); } // Fallback nếu không có file
 
-    // 2. Weights: Cấp phát và đọc file params/weights.txt
+    // Weights: Cấp phát và đọc file params/weights.txt
     // Sắp xếp lại dữ liệu weight để phù hợp với việc truy xuất tuần tự
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, 1);
     FILE* f_w = fopen("params/weights.txt", "r");
@@ -89,14 +87,12 @@ void dram_init() {
         fclose(f_w);
     }
 
-    // 3. OFM: Cấp phát và reset về 0.
+    // OFM: Cấp phát và reset về 0.
     // Quan trọng: Cần reset về 0 vì ta sẽ cộng dồn (accumulate) kết quả từ các pass khác nhau.
     ofm_dram = (int32_t*)calloc(OUTPUT_H * OUTPUT_W * OUTPUT_F, sizeof(int32_t));
 }
 
-// ==================================================================================
-// 2. CÁC HÀM DMA RIÊNG BIỆT (WEIGHT vs IFM)
-// ==================================================================================
+// CÁC HÀM DMA RIÊNG BIỆT (WEIGHT vs IFM)
 
 // Hàm load Weight vào Buffer (Đặc trưng của Weight Stationary: Chỉ chạy 1 lần mỗi Pass)
 // Mục tiêu: Tối đa hóa việc tái sử dụng Weight đã load lên SRAM
@@ -161,9 +157,7 @@ void dma_load_ifm(int ho, int wo, int pass_idx) {
     total_dma_cycles += cycles;
 }
 
-// ==================================================================================
-// 3. COMPUTE ENGINE
-// ==================================================================================
+// COMPUTE ENGINE
 
 // Hàm mô phỏng mảng tính toán (PE Array)
 // Thực hiện nhân chập giữa dữ liệu trong buffer_ifm và buffer_weight
@@ -191,9 +185,7 @@ int32_t run_pe_array() {
     return partial_sum;
 }
 
-// ==================================================================================
-// 4. CONTROLLER: WEIGHT STATIONARY DATAFLOW
-// ==================================================================================
+// CONTROLLER: WEIGHT STATIONARY DATAFLOW
 
 // Hàm điều khiển chính mô phỏng luồng dữ liệu Weight Stationary
 void run_accelerator_ws() {
@@ -209,7 +201,7 @@ void run_accelerator_ws() {
         
         printf("Processing Pass %d/%d (Loading Weights to SRAM)...\n", p+1, num_passes);
         
-        // 1. LOAD WEIGHT (Chỉ 1 lần cho cả Pass này)
+        // LOAD WEIGHT (Chỉ 1 lần cho cả Pass này)
         // Dữ liệu này sẽ nằm im trong buffer_weight cho đến khi tính xong hết ảnh (112x112 pixels)
         // Đây là lợi điểm: Giảm thiểu việc đọc lại Weight từ DRAM.
         dma_load_weights(p);
@@ -219,15 +211,15 @@ void run_accelerator_ws() {
         for (int ho = 0; ho < OUTPUT_H; ho++) {
             for (int wo = 0; wo < OUTPUT_W; wo++) {
                 
-                // 2. LOAD IFM (Liên tục load dữ liệu mới)
+                // LOAD IFM (Liên tục load dữ liệu mới)
                 // Dữ liệu IFM thay đổi theo từng pixel (ho, wo)
                 dma_load_ifm(ho, wo, p);
 
-                // 3. COMPUTE
+                // COMPUTE
                 // Tính toán tích chập tại điểm (ho, wo) cho nhóm kênh hiện tại
                 int32_t partial_result = run_pe_array();
 
-                // 4. ACCUMULATE (Read-Modify-Write to DRAM/Output Buffer)
+                // ACCUMULATE (Read-Modify-Write to DRAM/Output Buffer)
                 // Vì ta tính theo từng Pass (Partial Output - Tổng riêng), 
                 // nên ta phải cộng dồn kết quả mới vào kết quả cũ đã có trong DRAM.
                 // Pass 1: Tính 16 kênh đầu -> Lưu vào DRAM.
