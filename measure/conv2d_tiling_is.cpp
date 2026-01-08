@@ -1,54 +1,44 @@
-// ./isc 112 112 32 3 3 1 112 112 1 1 48 3 144
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 #include <math.h>
 
 // --- CẤU HÌNH BÀI TOÁN ---
-// #define INPUT_H 112
-// #define INPUT_W 112
-// #define INPUT_C 32
-// #define KERNEL_H 3
-// #define KERNEL_W 3
-// #define OUTPUT_F 1 
-// #define OUTPUT_H 112
-// #define OUTPUT_W 112
-// #define STRIDE 1
-// #define PADDING 1
-int INPUT_H, INPUT_W, INPUT_C;
-int KERNEL_H, KERNEL_W;
-int OUTPUT_F, OUTPUT_H, OUTPUT_W;
-int STRIDE, PADDING;
+#define INPUT_H 112
+#define INPUT_W 112
+#define INPUT_C 32
+#define KERNEL_H 3
+#define KERNEL_W 3
+#define OUTPUT_F 1 
+#define OUTPUT_H 112
+#define OUTPUT_W 112
+#define STRIDE 1
+#define PADDING 1
 
 // --- CẤU HÌNH PHẦN CỨNG ---
-// #define NUM_PE 48               
-// #define MACS_PER_PE 3           
-// #define BUFFER_SIZE_BYTES 144   // 48 PE * 3 inputs * 1 byte
-// #define PARALLEL_CHANNELS 16    // Số channel xử lý song song
-int NUM_PE, MACS_PER_PE, BUFFER_SIZE_BYTES;
-int PARALLEL_CHANNELS;
-// --- CẤU HÌNH HIỆU NĂNG ---
-#define SYSTEM_FREQ_MHZ 100.0   
-#define DRAM_BUS_WIDTH_BYTES 8  
-#define PE_COMPUTE_CYCLES 1     
-
-unsigned long long total_dma_cycles = 0;
-unsigned long long total_compute_cycles = 0;
+#define NUM_PE 48               
+#define MACS_PER_PE 3           
+#define BUFFER_SIZE_BYTES 144   // 144 bytes (Vừa đủ cho 16 channels x 9 phần tử)
+#define PARALLEL_CHANNELS 16    
 
 // --- MEMORY ---
 int8_t* ifm_dram;       
 int8_t* weight_dram;    
 int32_t* ofm_dram;      
 
-int8_t* buffer_ifm;   
-int8_t* buffer_weight;
+int8_t buffer_ifm[BUFFER_SIZE_BYTES];   
+int8_t buffer_weight[BUFFER_SIZE_BYTES]; 
 
+// Biến đếm số bytes DMA load
+uint64_t total_weight_bytes_loaded = 0;
+uint64_t total_ifm_bytes_loaded = 0;
 
 void dram_init() {
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C);
     // Load IFM
-    FILE* f_ifm = fopen("params/ifm.txt", "r");
+    FILE* f_ifm = fopen("../params/ifm.txt", "r");
     if(f_ifm) {
         char line[64];
         
@@ -74,12 +64,12 @@ void dram_init() {
         }
         fclose(f_ifm);
     } else {
-        printf("Error: Could not open params/ifm.txt\n");
+        printf("Error: Could not open ../params/ifm.txt\n");
         memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); 
     }
     // Weights
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, 1);
-    FILE* f_w = fopen("params/weights.txt", "r");
+    FILE* f_w = fopen("../params/weights.txt", "r");
     if(f_w) {
         char line[64];
         // WEITGHS = C->W->H->F
@@ -100,7 +90,7 @@ void dram_init() {
     ofm_dram = (int32_t*)calloc(OUTPUT_H * OUTPUT_W * OUTPUT_F, sizeof(int32_t));
 }
 void write_dram_to_file() {
-    FILE* f = fopen("ofm/ofm.txt", "w");
+    FILE* f = fopen("../ofm/ofm.txt", "w");
     if (!f) return;
     for(int i=0; i<OUTPUT_H*OUTPUT_W; i++) fprintf(f, "%d\n", ofm_dram[i]);
     fclose(f);
@@ -129,8 +119,8 @@ void dma_load_ifm_full(int ho, int pass_idx) {
             }
         }
     }
-    // Latency: Full Load 144 bytes
-    total_dma_cycles += (buffer_ptr + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
+    // Đếm số bytes đã load (144 bytes - toàn bộ 3x3 window)
+    total_ifm_bytes_loaded += 144;
 }
 
 // [SLIDING] Shift trái buffer và chỉ load cột mới (Chạy tại wo > 0)
@@ -150,7 +140,6 @@ void dma_shift_and_load_ifm(int ho, int wo, int pass_idx) {
     }
 
     // LOAD NEW COLUMN (Load cột thứ 3)
-    int bytes_loaded = 0;
     for (int i = 0; i < PARALLEL_CHANNELS; i++) {
         int current_c = channel_start + i;
         if (current_c >= INPUT_C) break;
@@ -164,11 +153,10 @@ void dma_shift_and_load_ifm(int ho, int wo, int pass_idx) {
                 val = ifm_dram[hi * (INPUT_W * INPUT_C) + wi * INPUT_C + current_c];
             }
             buffer_ifm[base + (kh * 3) + 2] = val; // Ghi vào vị trí cuối
-            bytes_loaded++;
         }
     }
-    // Latency: Partial Load 48 bytes (Nhanh gấp 3 lần full load)
-    total_dma_cycles += (bytes_loaded + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
+    // Đếm số bytes đã load (48 bytes - chỉ cột mới)
+    total_ifm_bytes_loaded += 48;
 }
 
 // WEIGHT LOADING (Mô phỏng Tiling: Load lại liên tục)
@@ -189,8 +177,8 @@ void dma_load_weights_per_pixel(int pass_idx) {
             }
         }
     }
-    // Latency: Luôn load 144 bytes mỗi lần gọi
-    total_dma_cycles += (buffer_ptr + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
+    // Đếm số bytes đã load (144 bytes mỗi pixel)
+    total_weight_bytes_loaded += 144;
 }
 
 // COMPUTE ENGINE & CONTROLLER
@@ -205,12 +193,16 @@ int32_t run_pe_array() {
         }
         partial_sum += pe_acc;
     }
-    total_compute_cycles += PE_COMPUTE_CYCLES;
     return partial_sum;
 }
 
 void run_simulation_hybrid() {
     printf("--- SIMULATION: TILING WEIGHTS + INPUT SLIDING WINDOW ---\n");
+    
+    // Reset counters
+    total_weight_bytes_loaded = 0;
+    total_ifm_bytes_loaded = 0;
+    
     int num_passes = (INPUT_C + PARALLEL_CHANNELS - 1) / PARALLEL_CHANNELS;
 
     for (int ho = 0; ho < OUTPUT_H; ho++) {
@@ -239,80 +231,20 @@ void run_simulation_hybrid() {
         }
     }
 
-    // REPORT
-    unsigned long long total_cycles = total_dma_cycles + total_compute_cycles;
-    double total_time_ms = (double)total_cycles / (SYSTEM_FREQ_MHZ * 1000.0);
-    
-    printf("\n--- PERFORMANCE REPORT (Hybrid) ---\n");
-    printf("Total Cycles: %llu\n", total_cycles);
-    printf("  - DMA Cycles:     %llu (High Weight load, Low IFM load)\n", total_dma_cycles);
-    printf("  - Compute Cycles: %llu\n", total_compute_cycles);
-    printf("Estimated Time: %.4f ms\n", total_time_ms);
-    printf("-----------------------------------\n");
+    printf("--- SIMULATION COMPLETED ---\n");
+    printf("Total Weight Bytes Loaded: %" PRIu64 " bytes\n", total_weight_bytes_loaded);
+    printf("Total IFM Bytes Loaded: %" PRIu64 " bytes\n", total_ifm_bytes_loaded);
 }
 
 void cleanup() { free(ifm_dram); free(weight_dram); free(ofm_dram); }
 
-// int main() {
-//     dram_init();
-//     run_simulation_hybrid();
-//     write_dram_to_file();
-//     cleanup();
-//     return 0;
-// }
-int main(int argc, char *argv[]) {
-    // Kiểm tra đủ tham số (13 tham số + 1 tên file = 14)
-    if (argc < 14) {
-        printf("Usage: %s IH IW IC KH KW OF OH OW S P NPE MAC BUF\n", argv[0]);
-        return -1;
-    }
-
-    // Gán giá trị từ Terminal
-    INPUT_H = atoi(argv[1]);
-    INPUT_W = atoi(argv[2]);
-    INPUT_C = atoi(argv[3]);
-    KERNEL_H = atoi(argv[4]);
-    KERNEL_W = atoi(argv[5]);
-    OUTPUT_F = atoi(argv[6]);
-    OUTPUT_H = atoi(argv[7]);
-    OUTPUT_W = atoi(argv[8]);
-    STRIDE = atoi(argv[9]);
-    PADDING = atoi(argv[10]);
-    NUM_PE = atoi(argv[11]);
-    MACS_PER_PE = atoi(argv[12]);
-    BUFFER_SIZE_BYTES = atoi(argv[13]);
-
-    // Tự động tính PARALLEL_CHANNELS
-    // Logic: (Tổng số MACs của mảng PE) / (Kích thước 1 kernel)
-    // Ví dụ: (48 * 3) / (3 * 3) = 16
-    int kernel_size = KERNEL_H * KERNEL_W;
-    if (kernel_size > 0) {
-        PARALLEL_CHANNELS = (NUM_PE * MACS_PER_PE) / kernel_size;
-    } else {
-        PARALLEL_CHANNELS = 1;
-    }
-    printf("--- Configuration ---\n");
-    printf("Parallel Channels: %d\n", PARALLEL_CHANNELS);
-    printf("Buffer Size: %d bytes\n", BUFFER_SIZE_BYTES);
-
-    // Cấp phát bộ nhớ động cho Buffer
-    buffer_ifm = (int8_t*)malloc(BUFFER_SIZE_BYTES * sizeof(int8_t));
-    buffer_weight = (int8_t*)malloc(BUFFER_SIZE_BYTES * sizeof(int8_t));
-
-    if (!buffer_ifm || !buffer_weight) {
-        printf("Error: Malloc failed for buffers\n");
-        return -1;
-    }
-
-    // Chạy quy trình mô phỏng cũ
-    dram_init();
-    run_simulation_hybrid(); // Hàm chạy chính của file này
-    write_dram_to_file();
+int main() {
+    // Xóa file OFM cũ trước khi chạy
+    remove("../ofm/ofm.txt");
     
-    // Dọn dẹp bộ nhớ
-    free(buffer_ifm);
-    free(buffer_weight);
-    cleanup(); // Dọn dẹp các DRAM
-
+    dram_init();
+    run_simulation_hybrid();
+    write_dram_to_file();
+    cleanup();
     return 0;
 }

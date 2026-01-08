@@ -1,5 +1,5 @@
-IFM: params/ifm.txt ,shape   : [1, 112, 112, 32]
-WEIGHTS: params/weights.txt ,shape   : [1, 3, 3, 32]
+IFM: ../params/ifm.txt ,shape   : [1, 112, 112, 32]
+WEIGHTS: ../params/weights.txt ,shape   : [1, 3, 3, 32]
 OFM golden: golden_output/ofm_golden.txt ,shape   : [1, 112, 112, 1]
 Stride=(1,1)
 

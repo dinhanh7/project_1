@@ -26,10 +26,6 @@
 #define DRAM_BUS_WIDTH_BYTES 8  
 #define PE_COMPUTE_CYCLES 1     
 
-// Biến toàn cục đếm hiệu năng
-unsigned long long total_dma_cycles = 0;
-unsigned long long total_compute_cycles = 0;
-
 // --- MÔ PHỎNG BỘ NHỚ ---
 int8_t* ifm_dram;       
 int8_t* weight_dram;    
@@ -40,12 +36,36 @@ int8_t buffer_weight[BUFFER_SIZE_BYTES];
 
 void dram_init() {
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C);
+    // Load IFM
     FILE* f_ifm = fopen("../params/ifm.txt", "r");
     if(f_ifm) {
-        char line[64]; int idx = 0;
-        while(fgets(line, 64, f_ifm)) ifm_dram[idx++] = (int8_t)atoi(line);
+        char line[64];
+        
+        for (int h = 0; h < INPUT_H; h++) {
+            for (int w = 0; w < INPUT_W; w++) {
+                for (int c = 0; c < INPUT_C; c++) {
+                    
+                    if (fgets(line, 64, f_ifm)) {
+                        // Chuyển từ chuỗi sang số nguyên 
+                        int val = atoi(line);
+                        // Xử lý số nguyên có dấu 8-bit 
+                        if (val > 0x7F) {
+                            val -= 0x100;
+                        }
+                        // Công thức: index = h * (W * C) + w * C + c
+                        // [h, w, c]
+                        int idx = h * (INPUT_W * INPUT_C) + w * INPUT_C + c;
+                        // Gán vào DRAM 
+                        ifm_dram[idx] = (int8_t)val;
+                    }
+                }
+            }
+        }
         fclose(f_ifm);
-    } else { memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); }
+    } else {
+        printf("Error: Could not open params/ifm.txt\n");
+        memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); 
+    }
 
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, 1);
     FILE* f_w = fopen("../params/weights.txt", "r");
@@ -67,7 +87,9 @@ void dram_init() {
     ofm_dram = (int32_t*)calloc(OUTPUT_H * OUTPUT_W * OUTPUT_F, sizeof(int32_t));
 }
 
-// CÁC HÀM DMA (Weight, IFM Init, IFM Shift)
+// ==================================================================================
+// 1. CÁC HÀM DMA (Weight, IFM Init, IFM Shift)
+// ==================================================================================
 
 // Load Weight (Weight Stationary - Chỉ chạy đầu Pass)
 void dma_load_weights(int pass_idx) {
@@ -83,8 +105,6 @@ void dma_load_weights(int pass_idx) {
             }
         }
     }
-    // Latency: Load 144 bytes
-    total_dma_cycles += (buffer_ptr + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
 }
 
 // IFM INIT: Load toàn bộ 3x3 block (Chạy tại điểm đầu tiên của mỗi hàng: wo=0)
@@ -110,8 +130,6 @@ void dma_load_ifm_init(int ho, int pass_idx) {
             }
         }
     }
-    // Latency: Load 144 bytes (Full Load)
-    total_dma_cycles += (buffer_ptr + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
 }
 
 // IFM SHIFT & LOAD: Dịch buffer và chỉ load cột mới
@@ -119,7 +137,7 @@ void dma_load_ifm_init(int ho, int pass_idx) {
 void dma_shift_and_load_col(int ho, int wo, int pass_idx) {
     int channel_start = pass_idx * PARALLEL_CHANNELS;
     
-    // SHIFT PHASE (Dịch chuyển dữ liệu trong SRAM/Register)
+    // 1. SHIFT PHASE (Dịch chuyển dữ liệu trong SRAM/Register)
     // Cấu trúc buffer cho mỗi channel (3x3):
     // [0] [1] [2]  --> Cột 0: idx 0,3,6
     // [3] [4] [5]  --> Cột 1: idx 1,4,7
@@ -139,8 +157,7 @@ void dma_shift_and_load_col(int ho, int wo, int pass_idx) {
         buffer_ifm[base + 7] = buffer_ifm[base + 8]; 
     }
 
-    // LOAD PHASE (Chỉ load cột thứ 3 từ DRAM)
-    int bytes_loaded = 0;
+    // 2. LOAD PHASE (Chỉ load cột thứ 3 từ DRAM)
     for (int i = 0; i < PARALLEL_CHANNELS; i++) {
         int current_c = channel_start + i;
         if (current_c >= INPUT_C) break;
@@ -160,15 +177,13 @@ void dma_shift_and_load_col(int ho, int wo, int pass_idx) {
             
             // Ghi vào vị trí cột 2 (Index 2, 5, 8)
             buffer_ifm[base + (kh * 3) + 2] = val;
-            bytes_loaded++;
         }
     }
-
-    // Latency: Chỉ load 48 bytes (3 bytes * 16 channels) -> NHANH GẤP 3 LẦN
-    total_dma_cycles += (bytes_loaded + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
 }
 
-// COMPUTE ENGINE
+// ==================================================================================
+// 2. COMPUTE ENGINE
+// ==================================================================================
 
 int32_t run_pe_array() {
     int32_t partial_sum = 0;
@@ -180,11 +195,12 @@ int32_t run_pe_array() {
         }
         partial_sum += pe_acc;
     }
-    total_compute_cycles += PE_COMPUTE_CYCLES;
     return partial_sum;
 }
 
-// CONTROLLER: WS + SLIDING WINDOW
+// ==================================================================================
+// 3. CONTROLLER: WS + SLIDING WINDOW
+// ==================================================================================
 
 void run_accelerator_optimized() {
     printf("--- SIMULATION: WEIGHT STATIONARY + INPUT SLIDING WINDOW ---\n");
@@ -220,15 +236,7 @@ void run_accelerator_optimized() {
         }
     }
 
-    // Report
-    unsigned long long total_cycles = total_dma_cycles + total_compute_cycles;
-    double total_time_ms = (double)total_cycles / (SYSTEM_FREQ_MHZ * 1000.0);
-    printf("\n--- PERFORMANCE REPORT (OPTIMIZED) ---\n");
-    printf("Total Cycles: %llu\n", total_cycles);
-    printf("  - DMA Cycles:     %llu (Reduced significantly due to Sliding Window)\n", total_dma_cycles);
-    printf("  - Compute Cycles: %llu\n", total_compute_cycles);
-    printf("Estimated Time: %.4f ms\n", total_time_ms);
-    printf("--------------------------------------\n");
+    printf("\n--- SIMULATION COMPLETED ---\n");
 }
 
 void write_dram_to_file() {

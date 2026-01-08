@@ -48,7 +48,7 @@ void dram_init() {
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C * sizeof(int8_t));
     
     // Thử đọc dữ liệu IFM từ file (mô phỏng việc load ảnh/data thực tế)
-    FILE* f_ifm = fopen("params/ifm.txt", "r");
+    FILE* f_ifm = fopen("../params/ifm.txt", "r");
     if(f_ifm) {
         char line[64];
         int idx = 0;
@@ -63,7 +63,7 @@ void dram_init() {
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, sizeof(int8_t));
     
     // Thử đọc dữ liệu Weights từ file
-    FILE* f_w = fopen("params/weights.txt", "r");
+    FILE* f_w = fopen("../params/weights.txt", "r");
     if(f_w) {
         char line[64];
         // Vòng lặp lồng nhau để đọc weight theo thứ tự (F, H, W, C) hoặc tương tự tùy format
@@ -251,7 +251,7 @@ void run_accelerator() {
 
 // Ghi kết quả từ DRAM ảo ra file text để kiểm tra
 void write_dram_to_file() {
-    FILE* f = fopen("ofm/ofm.txt", "w");
+    FILE* f = fopen("../ofm/ofm.txt", "w");
     if (!f) return;
     for(int i=0; i<OUTPUT_H*OUTPUT_W; i++) fprintf(f, "%d\n", ofm_dram[i]);
     fclose(f);

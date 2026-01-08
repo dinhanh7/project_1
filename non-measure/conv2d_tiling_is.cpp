@@ -22,14 +22,6 @@
 #define BUFFER_SIZE_BYTES 144   // 144 bytes (Vừa đủ cho 16 channels x 9 phần tử)
 #define PARALLEL_CHANNELS 16    
 
-// --- CẤU HÌNH HIỆU NĂNG ---
-#define SYSTEM_FREQ_MHZ 100.0   
-#define DRAM_BUS_WIDTH_BYTES 8  
-#define PE_COMPUTE_CYCLES 1     
-
-unsigned long long total_dma_cycles = 0;
-unsigned long long total_compute_cycles = 0;
-
 // --- MEMORY ---
 int8_t* ifm_dram;       
 int8_t* weight_dram;    
@@ -41,7 +33,7 @@ int8_t buffer_weight[BUFFER_SIZE_BYTES];
 void dram_init() {
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C);
     // Load IFM
-    FILE* f_ifm = fopen("params/ifm.txt", "r");
+    FILE* f_ifm = fopen("../params/ifm.txt", "r");
     if(f_ifm) {
         char line[64];
         
@@ -67,12 +59,12 @@ void dram_init() {
         }
         fclose(f_ifm);
     } else {
-        printf("Error: Could not open params/ifm.txt\n");
+        printf("Error: Could not open ../params/ifm.txt\n");
         memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); 
     }
     // Weights
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, 1);
-    FILE* f_w = fopen("params/weights.txt", "r");
+    FILE* f_w = fopen("../params/weights.txt", "r");
     if(f_w) {
         char line[64];
         // WEITGHS = C->W->H->F
@@ -93,7 +85,7 @@ void dram_init() {
     ofm_dram = (int32_t*)calloc(OUTPUT_H * OUTPUT_W * OUTPUT_F, sizeof(int32_t));
 }
 void write_dram_to_file() {
-    FILE* f = fopen("ofm/ofm.txt", "w");
+    FILE* f = fopen("../ofm/ofm.txt", "w");
     if (!f) return;
     for(int i=0; i<OUTPUT_H*OUTPUT_W; i++) fprintf(f, "%d\n", ofm_dram[i]);
     fclose(f);
@@ -122,8 +114,6 @@ void dma_load_ifm_full(int ho, int pass_idx) {
             }
         }
     }
-    // Latency: Full Load 144 bytes
-    total_dma_cycles += (buffer_ptr + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
 }
 
 // [SLIDING] Shift trái buffer và chỉ load cột mới (Chạy tại wo > 0)
@@ -143,7 +133,6 @@ void dma_shift_and_load_ifm(int ho, int wo, int pass_idx) {
     }
 
     // LOAD NEW COLUMN (Load cột thứ 3)
-    int bytes_loaded = 0;
     for (int i = 0; i < PARALLEL_CHANNELS; i++) {
         int current_c = channel_start + i;
         if (current_c >= INPUT_C) break;
@@ -157,11 +146,8 @@ void dma_shift_and_load_ifm(int ho, int wo, int pass_idx) {
                 val = ifm_dram[hi * (INPUT_W * INPUT_C) + wi * INPUT_C + current_c];
             }
             buffer_ifm[base + (kh * 3) + 2] = val; // Ghi vào vị trí cuối
-            bytes_loaded++;
         }
     }
-    // Latency: Partial Load 48 bytes (Nhanh gấp 3 lần full load)
-    total_dma_cycles += (bytes_loaded + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
 }
 
 // WEIGHT LOADING (Mô phỏng Tiling: Load lại liên tục)
@@ -182,8 +168,6 @@ void dma_load_weights_per_pixel(int pass_idx) {
             }
         }
     }
-    // Latency: Luôn load 144 bytes mỗi lần gọi
-    total_dma_cycles += (buffer_ptr + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
 }
 
 // COMPUTE ENGINE & CONTROLLER
@@ -198,7 +182,6 @@ int32_t run_pe_array() {
         }
         partial_sum += pe_acc;
     }
-    total_compute_cycles += PE_COMPUTE_CYCLES;
     return partial_sum;
 }
 
@@ -232,21 +215,15 @@ void run_simulation_hybrid() {
         }
     }
 
-    // REPORT
-    unsigned long long total_cycles = total_dma_cycles + total_compute_cycles;
-    double total_time_ms = (double)total_cycles / (SYSTEM_FREQ_MHZ * 1000.0);
-    
-    printf("\n--- PERFORMANCE REPORT (Hybrid) ---\n");
-    printf("Total Cycles: %llu\n", total_cycles);
-    printf("  - DMA Cycles:     %llu (High Weight load, Low IFM load)\n", total_dma_cycles);
-    printf("  - Compute Cycles: %llu\n", total_compute_cycles);
-    printf("Estimated Time: %.4f ms\n", total_time_ms);
-    printf("-----------------------------------\n");
+    printf("--- SIMULATION COMPLETED ---\n");
 }
 
 void cleanup() { free(ifm_dram); free(weight_dram); free(ofm_dram); }
 
 int main() {
+    // Xóa file OFM cũ trước khi chạy
+    remove("../ofm/ofm.txt");
+    
     dram_init();
     run_simulation_hybrid();
     write_dram_to_file();

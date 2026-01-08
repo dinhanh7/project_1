@@ -47,7 +47,7 @@ int32_t* ofm_dram;
 void dram_init() {
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C * sizeof(int8_t));
     // Load IFM
-    FILE* f_ifm = fopen("params/ifm.txt", "r");
+    FILE* f_ifm = fopen("../params/ifm.txt", "r");
     if(f_ifm) {
         char line[64];
         
@@ -73,13 +73,13 @@ void dram_init() {
         }
         fclose(f_ifm);
     } else {
-        printf("Error: Could not open params/ifm.txt\n");
+        printf("Error: Could not open ../params/ifm.txt\n");
         memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); 
     }
 
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, sizeof(int8_t));
     // Load Weights
-    FILE* f_w = fopen("params/weights.txt", "r");
+    FILE* f_w = fopen("../params/weights.txt", "r");
     if(f_w) {
         char line[64];
         //WEIGHTS: C->W->H->F
@@ -244,7 +244,7 @@ void run_accelerator() {
 }
 
 void write_dram_to_file() {
-    FILE* f = fopen("ofm/ofm.txt", "w");
+    FILE* f = fopen("../ofm/ofm.txt", "w");
     if (!f) return;
     for(int i=0; i<OUTPUT_H*OUTPUT_W; i++) fprintf(f, "%d\n", ofm_dram[i]);
     fclose(f);

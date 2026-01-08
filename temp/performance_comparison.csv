@@ -1,0 +1,5 @@
+command,cpu_atom_cache-references_,cpu_core_cache-references_,cpu_atom_cache-misses_,cpu_core_cache-misses_,cpu_atom_cycles_,cpu_core_cycles_,cpu_atom_instructions_,cpu_core_instructions_,cpu_atom_branches_,cpu_core_branches_,time_elapsed_seconds
+./is1,,100381.0,,63856.0,,59042023.0,,245643304.0,,52859101.0,0.013697042
+./ws1,,112532.0,,74525.0,,63278024.0,,258789472.0,,57600885.0,0.016542437
+./wsis1,,102719.0,,70663.0,,51813243.0,,211202425.0,,47166976.0,0.013276714
+./tl1,,106459.0,,71927.0,,68821770.0,,275888695.0,,56438512.0,0.0182878

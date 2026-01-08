@@ -152,7 +152,7 @@ if __name__ == "__main__":
     # File paths cố định
     input_file = "HEX_IN/op006_CONV_2D_ifm_values.hex"
     weight_file = "HEX_IN/op006_CONV_2D_weight_values_0b.hex"
-    output_file = "OFM/op006_CONV_2D_ofm.hex"
+    output_file = "../ofm/op006_CONV_2D_ofm.hex"
 
     
     # Đọc dữ liệu

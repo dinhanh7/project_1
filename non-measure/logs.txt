@@ -1,0 +1,74 @@
+g++ conv2d_tiling_test.cpp -O2 -g -o tl1
+sudo taskset -c 0-7 perf stat -e cache-references,cache-misses,cycles,instructions,branches ./tl1
+
+ Performance counter stats for './is1':
+
+     <not counted>      cpu_atom/cache-references/                                              (0,00%)
+           100.381      cpu_core/cache-references/                                            
+     <not counted>      cpu_atom/cache-misses/                                                  (0,00%)
+            63.856      cpu_core/cache-misses/           #   63,61% of all cache refs         
+     <not counted>      cpu_atom/cycles/                                                        (0,00%)
+        59.042.023      cpu_core/cycles/                                                      
+     <not counted>      cpu_atom/instructions/                                                  (0,00%)
+       245.643.304      cpu_core/instructions/           #    4,16  insn per cycle            
+     <not counted>      cpu_atom/branches/                                                      (0,00%)
+        52.859.101      cpu_core/branches/                                                    
+
+       0,013697042 seconds time elapsed
+
+       0,009855000 seconds user
+       0,003942000 seconds sys
+
+ Performance counter stats for './ws1':
+
+     <not counted>      cpu_atom/cache-references/                                              (0,00%)
+           112.532      cpu_core/cache-references/                                            
+     <not counted>      cpu_atom/cache-misses/                                                  (0,00%)
+            74.525      cpu_core/cache-misses/           #   66,23% of all cache refs         
+     <not counted>      cpu_atom/cycles/                                                        (0,00%)
+        63.278.024      cpu_core/cycles/                                                      
+     <not counted>      cpu_atom/instructions/                                                  (0,00%)
+       258.789.472      cpu_core/instructions/           #    4,09  insn per cycle            
+     <not counted>      cpu_atom/branches/                                                      (0,00%)
+        57.600.885      cpu_core/branches/                                                    
+
+       0,016542437 seconds time elapsed
+
+       0,014589000 seconds user
+       0,000972000 seconds sys
+
+ Performance counter stats for './wsis1':
+
+     <not counted>      cpu_atom/cache-references/                                              (0,00%)
+           102.719      cpu_core/cache-references/                                            
+     <not counted>      cpu_atom/cache-misses/                                                  (0,00%)
+            70.663      cpu_core/cache-misses/           #   68,79% of all cache refs         
+     <not counted>      cpu_atom/cycles/                                                        (0,00%)
+        51.813.243      cpu_core/cycles/                                                      
+     <not counted>      cpu_atom/instructions/                                                  (0,00%)
+       211.202.425      cpu_core/instructions/           #    4,08  insn per cycle            
+     <not counted>      cpu_atom/branches/                                                      (0,00%)
+        47.166.976      cpu_core/branches/                                                    
+
+       0,013276714 seconds time elapsed
+
+       0,011009000 seconds user
+       0,002001000 seconds sys
+
+ Performance counter stats for './tl1':
+
+     <not counted>      cpu_atom/cache-references/                                              (0,00%)
+           106.459      cpu_core/cache-references/                                            
+     <not counted>      cpu_atom/cache-misses/                                                  (0,00%)
+            71.927      cpu_core/cache-misses/           #   67,56% of all cache refs         
+     <not counted>      cpu_atom/cycles/                                                        (0,00%)
+        68.821.770      cpu_core/cycles/                                                      
+     <not counted>      cpu_atom/instructions/                                                  (0,00%)
+       275.888.695      cpu_core/instructions/           #    4,01  insn per cycle            
+     <not counted>      cpu_atom/branches/                                                      (0,00%)
+        56.438.512      cpu_core/branches/                                                    
+
+       0,018287800 seconds time elapsed
+
+       0,016437000 seconds user
+       0,001933000 seconds sys

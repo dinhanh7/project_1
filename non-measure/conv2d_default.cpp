@@ -161,6 +161,9 @@ int main() {
     printf("Config: Input[%d,%d,%d], Kernel[%d,%d], Output[%d,%d,%d]\n", 
            INPUT_H, INPUT_W, INPUT_C, KERNEL_H, KERNEL_W, OUTPUT_H, OUTPUT_W, OUTPUT_F);
 
+    // Xóa file OFM cũ trước khi chạy
+    remove("../ofm/ofm.txt");
+
     // Đọc dữ liệu
     int8_t* ifm_data = read_ifm_file("../params/ifm.txt");
     int16_t* weight_data = read_file_weight("../params/weights.txt");

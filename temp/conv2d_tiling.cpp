@@ -36,7 +36,7 @@ int32_t* ofm_dram;      // DRAM chứa Output Feature Map (Kết quả)
 void dram_init() {
     // Cấp phát DRAM cho IFM
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C * sizeof(int8_t));
-    FILE* f_ifm = fopen("params/ifm.txt", "r");
+    FILE* f_ifm = fopen("../params/ifm.txt", "r");
     if(f_ifm) {
         char line[64];
         int idx = 0;
@@ -47,7 +47,7 @@ void dram_init() {
     // Cấp phát DRAM cho Weights (INT8)
     // Lưu ý: File weight gốc có thể là int16 hoặc int8, ở đây ta giả lập ép về int8 theo yêu cầu HW
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, sizeof(int8_t));
-    FILE* f_w = fopen("params/weights.txt", "r");
+    FILE* f_w = fopen("../params/weights.txt", "r");
     if(f_w) {
         char line[64];
         // Đọc theo thứ tự F->H->W->C nhưng map vào DRAM linear
@@ -201,7 +201,7 @@ void run_accelerator() {
 }
 
 void write_dram_to_file() {
-    FILE* f = fopen("ofm/ofm.txt", "w");
+    FILE* f = fopen("../ofm/ofm.txt", "w");
     if (!f) return;
     for(int i=0; i<OUTPUT_H*OUTPUT_W; i++) {
         fprintf(f, "%d\n", ofm_dram[i]);

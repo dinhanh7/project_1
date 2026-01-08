@@ -57,19 +57,19 @@ int8_t buffer_weight[BUFFER_SIZE_BYTES];
 
 // Hàm khởi tạo DRAM: Cấp phát bộ nhớ và đọc dữ liệu từ file (hoặc tạo giả)
 void dram_init() {
-    // IFM: Cấp phát và đọc file params/ifm.txt
+    // IFM: Cấp phát và đọc file ../params/ifm.txt
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C);
-    FILE* f_ifm = fopen("params/ifm.txt", "r");
+    FILE* f_ifm = fopen("../params/ifm.txt", "r");
     if(f_ifm) {
         char line[64]; int idx = 0;
         while(fgets(line, 64, f_ifm)) ifm_dram[idx++] = (int8_t)atoi(line);
         fclose(f_ifm);
     } else { memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); } // Fallback nếu không có file
 
-    // Weights: Cấp phát và đọc file params/weights.txt
+    // Weights: Cấp phát và đọc file ../params/weights.txt
     // Sắp xếp lại dữ liệu weight để phù hợp với việc truy xuất tuần tự
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, 1);
-    FILE* f_w = fopen("params/weights.txt", "r");
+    FILE* f_w = fopen("../params/weights.txt", "r");
     if(f_w) {
         char line[64];
         // WEITGHS = C->W->H->F
@@ -244,7 +244,7 @@ void run_accelerator_ws() {
 
 // Ghi kết quả OFM từ DRAM ra file để kiểm tra
 void write_dram_to_file() {
-    FILE* f = fopen("ofm/ofm.txt", "w");
+    FILE* f = fopen("../ofm/ofm.txt", "w");
     if (!f) return;
     for(int i=0; i<OUTPUT_H*OUTPUT_W; i++) fprintf(f, "%d\n", ofm_dram[i]);
     fclose(f);

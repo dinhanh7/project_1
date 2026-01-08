@@ -80,7 +80,7 @@ def find_file_with_prefix(folder_path, prefix):
 if __name__ == "__main__":
 
     GOLDEN_DIR = "../golden_output"
-    OFM_DIR = "../ofm"
+    OFM_DIR = "../ofm/"
 
     search_prefix = "ofm"
     print(f"-> Đang tìm file bắt đầu bằng '{search_prefix}'...")

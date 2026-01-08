@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 
 // --- CẤU HÌNH BÀI TOÁN ---
@@ -21,15 +22,6 @@
 #define BUFFER_SIZE_BYTES 144   // 1152 bit = 144 bytes
 #define PARALLEL_CHANNELS 16    // 48 PE * 3 MACs / 9 weights = 16 channels
 
-// --- CẤU HÌNH HIỆU NĂNG ---
-#define SYSTEM_FREQ_MHZ 100.0   
-#define DRAM_BUS_WIDTH_BYTES 8  
-#define PE_COMPUTE_CYCLES 1     
-
-// Biến toàn cục đếm hiệu năng
-unsigned long long total_dma_cycles = 0;
-unsigned long long total_compute_cycles = 0;
-
 // MÔ PHỎNG BỘ NHỚ (DRAM & BUFFERS)
 int8_t* ifm_dram;       
 int8_t* weight_dram;    
@@ -39,10 +31,14 @@ int32_t* ofm_dram;
 int8_t buffer_ifm[BUFFER_SIZE_BYTES];   // Sẽ thay đổi liên tục (Sliding Window)
 int8_t buffer_weight[BUFFER_SIZE_BYTES]; // Sẽ ĐỨNG YÊN (Stationary) trong thời gian dài
 
+// Biến đếm số bytes DMA load
+uint64_t total_weight_bytes_loaded = 0;
+uint64_t total_ifm_bytes_loaded = 0;
+
 void dram_init() {
     ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C);
     // Load IFM
-    FILE* f_ifm = fopen("params/ifm.txt", "r");
+    FILE* f_ifm = fopen("../params/ifm.txt", "r");
     if(f_ifm) {
         char line[64];
         
@@ -68,12 +64,12 @@ void dram_init() {
         }
         fclose(f_ifm);
     } else {
-        printf("Error: Could not open params/ifm.txt\n");
+        printf("Error: Could not open ../params/ifm.txt\n");
         memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); 
     }
     // Weights
     weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, 1);
-    FILE* f_w = fopen("params/weights.txt", "r");
+    FILE* f_w = fopen("../params/weights.txt", "r");
     if(f_w) {
         char line[64];
         // WEITGHS = C->W->H->F
@@ -119,10 +115,8 @@ void dma_load_weights(int pass_idx) {
         }
     }
     
-    // Tính Latency: Load đầy 144 bytes weight
-    // Overhead setup DMA + Transfer time
-    int cycles = (buffer_ptr + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
-    total_dma_cycles += cycles;
+    // Đếm số bytes đã load (144 bytes mỗi pass)
+    total_weight_bytes_loaded += 144;
 }
 
 // Hàm load IFM vào Buffer (Chạy liên tục cho từng pixel)
@@ -149,10 +143,9 @@ void dma_load_ifm(int ho, int wo, int pass_idx) {
             }
         }
     }
-
-    // Tính Latency: Load 144 bytes IFM
-    int cycles = (buffer_ptr + DRAM_BUS_WIDTH_BYTES - 1) / DRAM_BUS_WIDTH_BYTES;
-    total_dma_cycles += cycles;
+    
+    // Đếm số bytes đã load (144 bytes mỗi lần)
+    total_ifm_bytes_loaded += 144;
 }
 
 // COMPUTE ENGINE
@@ -175,7 +168,6 @@ int32_t run_pe_array() {
         partial_sum += pe_acc;
     }
     
-    total_compute_cycles += PE_COMPUTE_CYCLES;
     return partial_sum;
 }
 
@@ -183,7 +175,12 @@ int32_t run_pe_array() {
 
 void run_accelerator_ws() {
     printf("--- STARTING WEIGHT STATIONARY SIMULATION ---\n");
-    int num_passes = (INPUT_C + PARALLEL_CHANNELS - 1) / PARALLEL_CHANNELS; // de luon lam tron len
+    
+    // Reset counters
+    total_weight_bytes_loaded = 0;
+    total_ifm_bytes_loaded = 0;
+    
+    int num_passes = (INPUT_C + PARALLEL_CHANNELS - 1) / PARALLEL_CHANNELS;
 
     // Đây là cốt lõi của Weight Stationary. Ta duyệt qua từng khối channel.
     for (int p = 0; p < num_passes; p++) {
@@ -211,20 +208,13 @@ void run_accelerator_ws() {
         }
     }
 
-    // Report
-    unsigned long long total_cycles = total_dma_cycles + total_compute_cycles;
-    double total_time_ms = (double)total_cycles / (SYSTEM_FREQ_MHZ * 1000.0);
-
-    printf("\n--- PERFORMANCE REPORT (WEIGHT STATIONARY) ---\n");
-    printf("Total Cycles: %llu\n", total_cycles);
-    printf("  - DMA Cycles:     %llu\n", total_dma_cycles);
-    printf("  - Compute Cycles: %llu\n", total_compute_cycles);
-    printf("Estimated Time: %.4f ms\n", total_time_ms);
-    printf("----------------------------------------------\n");
+    printf("--- WEIGHT STATIONARY SIMULATION COMPLETED ---\n");
+    printf("Total Weight Bytes Loaded: %" PRIu64 " bytes\n", total_weight_bytes_loaded);
+    printf("Total IFM Bytes Loaded: %" PRIu64 " bytes\n", total_ifm_bytes_loaded);
 }
 
 void write_dram_to_file() {
-    FILE* f = fopen("ofm/ofm.txt", "w");
+    FILE* f = fopen("../ofm/ofm.txt", "w");
     if (!f) return;
     for(int i=0; i<OUTPUT_H*OUTPUT_W; i++) fprintf(f, "%d\n", ofm_dram[i]);
     fclose(f);
@@ -235,6 +225,9 @@ void cleanup() {
 }
 
 int main() {
+    // Xóa file OFM cũ trước khi chạy
+    remove("../ofm/ofm.txt");
+    
     dram_init();
     run_accelerator_ws(); // Chạy phiên bản Weight Stationary
     write_dram_to_file();

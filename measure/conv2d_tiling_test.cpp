@@ -1,0 +1,215 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <string.h>
+#include <math.h>
+
+// --- CẤU HÌNH BÀI TOÁN ---
+#define INPUT_H 112
+#define INPUT_W 112
+#define INPUT_C 32
+#define KERNEL_H 3
+#define KERNEL_W 3
+#define OUTPUT_F 1 
+#define OUTPUT_H 112
+#define OUTPUT_W 112
+#define STRIDE 1
+#define PADDING 1
+
+// --- CẤU HÌNH PHẦN CỨNG (HW SPEC) ---
+#define NUM_PE 48               
+#define MACS_PER_PE 3           
+#define BUFFER_SIZE_BYTES 144   // 48 PE * 3 inputs * 1 byte
+#define PARALLEL_CHANNELS 16    // Số channel xử lý song song
+
+// MÔ PHỎNG DRAM
+int8_t* ifm_dram;       
+int8_t* weight_dram;    
+int32_t* ofm_dram;      
+
+void dram_init() {
+    ifm_dram = (int8_t*)malloc(INPUT_H * INPUT_W * INPUT_C * sizeof(int8_t));
+    // Load IFM
+    FILE* f_ifm = fopen("../params/ifm.txt", "r");
+    if(f_ifm) {
+        char line[64];
+        
+        for (int h = 0; h < INPUT_H; h++) {
+            for (int w = 0; w < INPUT_W; w++) {
+                for (int c = 0; c < INPUT_C; c++) {
+                    
+                    if (fgets(line, 64, f_ifm)) {
+                        // Chuyển từ chuỗi sang số nguyên 
+                        int val = atoi(line);
+                        // Xử lý số nguyên có dấu 8-bit 
+                        if (val > 0x7F) {
+                            val -= 0x100;
+                        }
+                        // Công thức: index = h * (W * C) + w * C + c
+                        // [h, w, c]
+                        int idx = h * (INPUT_W * INPUT_C) + w * INPUT_C + c;
+                        // Gán vào DRAM 
+                        ifm_dram[idx] = (int8_t)val;
+                    }
+                }
+            }
+        }
+        fclose(f_ifm);
+    } else {
+        printf("Error: Could not open ../params/ifm.txt\n");
+        memset(ifm_dram, 1, INPUT_H * INPUT_W * INPUT_C); 
+    }
+
+    weight_dram = (int8_t*)calloc(KERNEL_H * KERNEL_W * INPUT_C * OUTPUT_F, sizeof(int8_t));
+    // Load Weights
+    FILE* f_w = fopen("../params/weights.txt", "r");
+    if(f_w) {
+        char line[64];
+        //WEIGHTS: C->W->H->F
+        for(int f=0; f<OUTPUT_F; f++)
+            for(int h=0; h<KERNEL_H; h++)
+                for(int w=0; w<KERNEL_W; w++)
+                    for(int c=0; c<INPUT_C; c++)
+                        if(fgets(line, 64, f_w)) {
+                             int val = atoi(line);
+                             if (val > 0x7F) val -= 0x100;
+                             //cho tinh idx nay dung voi [h, w, c, f] trong python
+                             int idx = h*(KERNEL_W*INPUT_C*OUTPUT_F) + w*(INPUT_C*OUTPUT_F) + c*OUTPUT_F + f;
+                             weight_dram[idx] = (int8_t)val;
+                        }
+        fclose(f_w);
+    }
+
+    ofm_dram = (int32_t*)malloc(OUTPUT_H * OUTPUT_W * OUTPUT_F * sizeof(int32_t));
+}
+
+// MÔ PHỎNG BUFFER & DMA
+int8_t buffer_ifm[BUFFER_SIZE_BYTES];
+int8_t buffer_weight[BUFFER_SIZE_BYTES];
+
+// Biến đếm số bytes DMA load
+uint64_t total_weight_bytes_loaded = 0;
+uint64_t total_ifm_bytes_loaded = 0;
+
+void dma_load_buffers(int ho, int wo, int pass_idx) {
+    // Reset buffer
+    memset(buffer_ifm, 0, BUFFER_SIZE_BYTES);
+    memset(buffer_weight, 0, BUFFER_SIZE_BYTES);
+
+    int channel_start = pass_idx * PARALLEL_CHANNELS; //tinh channel bat dau chay
+    int buffer_ptr = 0; 
+
+    for (int i = 0; i < PARALLEL_CHANNELS; i++) {
+        int current_c = channel_start + i;
+        if (current_c >= INPUT_C) break; 
+
+        for (int kh = 0; kh < KERNEL_H; kh++) {
+            for (int kw = 0; kw < KERNEL_W; kw++) {
+                // Fetch IFM
+                int hi = ho * STRIDE + kh - PADDING;
+                int wi = wo * STRIDE + kw - PADDING;
+                int8_t val_ifm = 0;
+                if (hi >= 0 && hi < INPUT_H && wi >= 0 && wi < INPUT_W) {
+                    // IFM: C->W->H
+                    int dram_idx = hi * (INPUT_W * INPUT_C) + wi * INPUT_C + current_c;
+                    val_ifm = ifm_dram[dram_idx];
+                }
+
+                // Fetch Weight
+                //WEIGHTS: F->C->W->H
+                int w_dram_idx = kh * (KERNEL_W * INPUT_C * OUTPUT_F) + 
+                                 kw * (INPUT_C * OUTPUT_F) + 
+                                 current_c * OUTPUT_F + 0;
+                int8_t val_w = weight_dram[w_dram_idx];
+
+                buffer_ifm[buffer_ptr] = val_ifm;
+                buffer_weight[buffer_ptr] = val_w;
+                buffer_ptr++;
+            }
+        }
+    }
+
+    // Đếm số bytes đã load (144 bytes cho IFM + 144 bytes cho Weight)
+    total_ifm_bytes_loaded += 144;
+    total_weight_bytes_loaded += 144;
+}
+
+// MÔ PHỎNG COMPUTE ENGINE
+int32_t run_pe_array() {
+    int32_t partial_sum = 0;
+
+    // Logic tính toán chức năng (Functional)
+    for (int pe_id = 0; pe_id < NUM_PE; pe_id++) {
+        int base_idx = pe_id * MACS_PER_PE; 
+        int32_t pe_acc = 0; 
+        for (int k = 0; k < MACS_PER_PE; k++) {//tinh het so MAC cua 1 con PE
+            int8_t a = buffer_ifm[base_idx + k];
+            int8_t b = buffer_weight[base_idx + k];
+            pe_acc += (int32_t)a * (int32_t)b;
+        }
+        partial_sum += pe_acc; // tong cua 48 con PE
+    }
+
+    return partial_sum;
+}
+
+// CONTROLLER & REPORT
+void run_accelerator() {
+    printf("--- STARTING SIMULATION ---\n");
+    
+    // Reset counters
+    total_weight_bytes_loaded = 0;
+    total_ifm_bytes_loaded = 0;
+
+    int num_passes = (INPUT_C + PARALLEL_CHANNELS - 1) / PARALLEL_CHANNELS;//de dam bao luon lam tron len
+
+    // Main Loop
+    for (int ho = 0; ho < OUTPUT_H; ho++) {
+        for (int wo = 0; wo < OUTPUT_W; wo++) {
+            
+            int32_t final_accumulator = 0; //reset accum cho moi vi tri width
+
+            for (int p = 0; p < num_passes; p++) {
+                
+                // DMA Load
+                dma_load_buffers(ho, wo, p);
+
+                // Compute
+                int32_t pass_result = run_pe_array();//PE tinh toan xong gan vao pass_result
+                final_accumulator += pass_result; //cong ket qua cua cac PE vao accum
+            }
+
+            int out_idx = ho * OUTPUT_W + wo; // tinh vi tri luu trong output
+            ofm_dram[out_idx] = final_accumulator;
+        }
+    }
+    
+    printf("--- SIMULATION COMPLETED ---\n");
+    printf("Total Weight Bytes Loaded: %" PRIu64 " bytes\n", total_weight_bytes_loaded);
+    printf("Total IFM Bytes Loaded: %" PRIu64 " bytes\n", total_ifm_bytes_loaded);
+}
+
+void write_dram_to_file() {
+    FILE* f = fopen("../ofm/ofm.txt", "w");
+    if (!f) return;
+    for(int i=0; i<OUTPUT_H*OUTPUT_W; i++) fprintf(f, "%d\n", ofm_dram[i]);
+    fclose(f);
+}
+
+void cleanup() {
+    free(ifm_dram);
+    free(weight_dram);
+    free(ofm_dram);
+}
+
+int main() {
+    // Xóa file OFM cũ trước khi chạy
+    remove("../ofm/ofm.txt");
+    
+    dram_init();
+    run_accelerator();
+    write_dram_to_file();
+    cleanup();
+    return 0;
+}
