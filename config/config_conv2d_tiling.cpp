@@ -30,7 +30,6 @@ int NUM_PE, MACS_PER_PE, BUFFER_SIZE_BYTES;
 int PARALLEL_CHANNELS;
 
 // --- CẤU HÌNH HIỆU NĂNG (PERFORMANCE METRICS) ---
-#define SYSTEM_FREQ_MHZ 100.0   // Tần số hoạt động: 100 MHz
 #define DRAM_BUS_WIDTH_BYTES 8  // Bus 64-bit (8 bytes/cycle)
 #define PE_COMPUTE_CYCLES 1     // Số cycle để PE array hoàn thành tính toán 
 
@@ -192,12 +191,12 @@ int32_t run_pe_array(int* cycles_taken) {
 
 // CONTROLLER & REPORT
 void run_accelerator() {
-    printf("--- STARTING SIMULATION ---\n");
-    printf("Specs:\n");
-    printf("  - Frequency: %.1f MHz\n", SYSTEM_FREQ_MHZ);
-    printf("  - DMA Bandwidth: %d Bytes/cycle\n", DRAM_BUS_WIDTH_BYTES);
-    printf("  - PE Array: %d PEs (Parallel)\n", NUM_PE);
-    printf("---------------------------\n");
+    // printf("--- STARTING SIMULATION ---\n");
+    // printf("Specs:\n");
+    // printf("  - Frequency: %.1f MHz\n", SYSTEM_FREQ_MHZ);
+    // printf("  - DMA Bandwidth: %d Bytes/cycle\n", DRAM_BUS_WIDTH_BYTES);
+    // printf("  - PE Array: %d PEs (Parallel)\n", NUM_PE);
+    // printf("---------------------------\n");
 
     int num_passes = (INPUT_C + PARALLEL_CHANNELS - 1) / PARALLEL_CHANNELS;//de dam bao luon lam tron len
     
@@ -232,15 +231,14 @@ void run_accelerator() {
     total_cycles = total_dma_cycles + total_compute_cycles;
 
     // --- REPORT KẾT QUẢ ---
-    double total_time_ms = (double)total_cycles / (SYSTEM_FREQ_MHZ * 1000.0);
     
-    printf("\n--- PERFORMANCE REPORT ---\n");
-    printf("Total Output Pixels: %d\n", OUTPUT_H * OUTPUT_W);
-    printf("Total Cycles: %llu\n", total_cycles);
-    printf("  - DMA Cycles:     %llu (%.2f%%)\n", total_dma_cycles, (double)total_dma_cycles/total_cycles*100.0);
-    printf("  - Compute Cycles: %llu (%.2f%%)\n", total_compute_cycles, (double)total_compute_cycles/total_cycles*100.0);
-    printf("Estimated Time: %.4f ms\n", total_time_ms);
-    printf("--------------------------\n");
+    // printf("\n--- PERFORMANCE REPORT ---\n");
+    // printf("Total Output Pixels: %d\n", OUTPUT_H * OUTPUT_W);
+    // printf("Total Cycles: %llu\n", total_cycles);
+    // printf("  - DMA Cycles:     %llu (%.2f%%)\n", total_dma_cycles, (double)total_dma_cycles/total_cycles*100.0);
+    // printf("  - Compute Cycles: %llu (%.2f%%)\n", total_compute_cycles, (double)total_compute_cycles/total_cycles*100.0);
+    // printf("Estimated Time: %.4f ms\n", total_time_ms);
+    // printf("--------------------------\n");
 }
 
 void write_dram_to_file() {
@@ -295,7 +293,7 @@ int main(int argc, char *argv[]) {
     } else {
         PARALLEL_CHANNELS = 1; // Tránh chia cho 0
     }
-    printf("--- Auto-calculated PARALLEL_CHANNELS: %d ---\n", PARALLEL_CHANNELS);
+    // printf("--- Auto-calculated PARALLEL_CHANNELS: %d ---\n", PARALLEL_CHANNELS);
 
     // Cấp phát bộ nhớ cho Buffer
     buffer_ifm = (int8_t*)malloc(BUFFER_SIZE_BYTES * sizeof(int8_t));
@@ -305,7 +303,12 @@ int main(int argc, char *argv[]) {
     dram_init();
     run_accelerator();
     write_dram_to_file();
-    
+    unsigned long long total = total_dma_cycles + total_compute_cycles;
+    printf("SURVEY_RESULT,%llu,%llu,%llu\n", total_dma_cycles, total_compute_cycles, total);
+    // ---------------------
+
+    // Dọn dẹp bộ nhớ buffer mới cấp phát
+    // free(buffer_ifm);
     // Dọn dẹp bộ nhớ buffer mới cấp phát
     free(buffer_ifm);
     free(buffer_weight);

@@ -28,7 +28,7 @@ int NUM_PE, MACS_PER_PE, BUFFER_SIZE_BYTES;
 int PARALLEL_CHANNELS;
 
 // --- CẤU HÌNH HIỆU NĂNG ---
-#define SYSTEM_FREQ_MHZ 100.0   
+// #define SYSTEM_FREQ_MHZ 100.0   
 #define DRAM_BUS_WIDTH_BYTES 8  
 #define PE_COMPUTE_CYCLES 1     
 
@@ -265,12 +265,12 @@ int32_t run_pe_array() {
 // CONTROLLER: WS + SLIDING WINDOW
 
 void run_accelerator_optimized() {
-    printf("--- SIMULATION: WEIGHT STATIONARY + INPUT SLIDING WINDOW ---\n");
+    // printf("--- SIMULATION: WEIGHT STATIONARY + INPUT SLIDING WINDOW ---\n");
     int num_passes = (INPUT_C + PARALLEL_CHANNELS - 1) / PARALLEL_CHANNELS;
 
     // Loop Pass (Weight Stationary)
     for (int p = 0; p < num_passes; p++) {
-        printf("Pass %d/%d: Loading Weights...\n", p+1, num_passes);
+        // printf("Pass %d/%d: Loading Weights...\n", p+1, num_passes);
         dma_load_weights(p);
 
         // Loop Height
@@ -300,13 +300,13 @@ void run_accelerator_optimized() {
 
     // Report
     unsigned long long total_cycles = total_dma_cycles + total_compute_cycles;
-    double total_time_ms = (double)total_cycles / (SYSTEM_FREQ_MHZ * 1000.0);
-    printf("\n--- PERFORMANCE REPORT (OPTIMIZED) ---\n");
-    printf("Total Cycles: %llu\n", total_cycles);
-    printf("  - DMA Cycles:     %llu (Reduced significantly due to Sliding Window)\n", total_dma_cycles);
-    printf("  - Compute Cycles: %llu\n", total_compute_cycles);
-    printf("Estimated Time: %.4f ms\n", total_time_ms);
-    printf("--------------------------------------\n");
+    // double total_time_ms = (double)total_cycles / (SYSTEM_FREQ_MHZ * 1000.0);
+    // printf("\n--- PERFORMANCE REPORT (OPTIMIZED) ---\n");
+    // printf("Total Cycles: %llu\n", total_cycles);
+    // printf("  - DMA Cycles:     %llu (Reduced significantly due to Sliding Window)\n", total_dma_cycles);
+    // printf("  - Compute Cycles: %llu\n", total_compute_cycles);
+    // printf("Estimated Time: %.4f ms\n", total_time_ms);
+    // printf("--------------------------------------\n");
 }
 
 void write_dram_to_file() {
@@ -356,9 +356,9 @@ int main(int argc, char *argv[]) {
         PARALLEL_CHANNELS = 1;
     }
 
-    printf("--- Configuration ---\n");
-    printf("Auto-calculated PARALLEL_CHANNELS: %d\n", PARALLEL_CHANNELS);
-    printf("Buffer Size: %d bytes\n", BUFFER_SIZE_BYTES);
+    // printf("--- Configuration ---\n");
+    // printf("Auto-calculated PARALLEL_CHANNELS: %d\n", PARALLEL_CHANNELS);
+    // printf("Buffer Size: %d bytes\n", BUFFER_SIZE_BYTES);
 
     // Cấp phát bộ nhớ động
     buffer_ifm = (int8_t*)malloc(BUFFER_SIZE_BYTES * sizeof(int8_t));
@@ -373,7 +373,9 @@ int main(int argc, char *argv[]) {
     dram_init();
     run_accelerator_optimized();
     write_dram_to_file();
-    
+    unsigned long long total = total_dma_cycles + total_compute_cycles;
+    printf("SURVEY_RESULT,%llu,%llu,%llu\n", total_dma_cycles, total_compute_cycles, total);
+    // ---------------------
     // Dọn dẹp
     free(buffer_ifm);
     free(buffer_weight);

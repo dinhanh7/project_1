@@ -28,7 +28,7 @@ int NUM_PE, MACS_PER_PE, BUFFER_SIZE_BYTES;
 int PARALLEL_CHANNELS;
 
 // --- CẤU HÌNH HIỆU NĂNG ---
-#define SYSTEM_FREQ_MHZ 100.0   
+// #define SYSTEM_FREQ_MHZ 100.0   
 #define DRAM_BUS_WIDTH_BYTES 8  
 #define PE_COMPUTE_CYCLES 1     
 
@@ -221,14 +221,14 @@ void run_accelerator_ws() {
 
     // Report
     unsigned long long total_cycles = total_dma_cycles + total_compute_cycles;
-    double total_time_ms = (double)total_cycles / (SYSTEM_FREQ_MHZ * 1000.0);
+    // double total_time_ms = (double)total_cycles / (SYSTEM_FREQ_MHZ * 1000.0);
 
-    printf("\n--- PERFORMANCE REPORT (WEIGHT STATIONARY) ---\n");
-    printf("Total Cycles: %llu\n", total_cycles);
-    printf("  - DMA Cycles:     %llu\n", total_dma_cycles);
-    printf("  - Compute Cycles: %llu\n", total_compute_cycles);
-    printf("Estimated Time: %.4f ms\n", total_time_ms);
-    printf("----------------------------------------------\n");
+    // printf("\n--- PERFORMANCE REPORT (WEIGHT STATIONARY) ---\n");
+    // printf("Total Cycles: %llu\n", total_cycles);
+    // printf("  - DMA Cycles:     %llu\n", total_dma_cycles);
+    // printf("  - Compute Cycles: %llu\n", total_compute_cycles);
+    // printf("Estimated Time: %.4f ms\n", total_time_ms);
+    // printf("----------------------------------------------\n");
 }
 
 void write_dram_to_file() {
@@ -281,9 +281,9 @@ int main(int argc, char *argv[]) {
         PARALLEL_CHANNELS = 1; // Giá trị mặc định an toàn
     }
     
-    printf("--- Configuration ---\n");
-    printf("Auto-calculated PARALLEL_CHANNELS: %d\n", PARALLEL_CHANNELS);
-    printf("Buffer Size: %d bytes\n", BUFFER_SIZE_BYTES);
+    // printf("--- Configuration ---\n");
+    // printf("Auto-calculated PARALLEL_CHANNELS: %d\n", PARALLEL_CHANNELS);
+    // printf("Buffer Size: %d bytes\n", BUFFER_SIZE_BYTES);
 
     // Cấp phát bộ nhớ động cho 2 Buffer
     buffer_ifm = (int8_t*)malloc(BUFFER_SIZE_BYTES * sizeof(int8_t));
@@ -299,6 +299,8 @@ int main(int argc, char *argv[]) {
     run_accelerator_ws(); // Chạy mô phỏng Weight Stationary
     write_dram_to_file(); // Ghi kết quả
     
+    unsigned long long total = total_dma_cycles + total_compute_cycles;
+    printf("SURVEY_RESULT,%llu,%llu,%llu\n", total_dma_cycles, total_compute_cycles, total);
     // Dọn dẹp bộ nhớ
     free(buffer_ifm);
     free(buffer_weight);
